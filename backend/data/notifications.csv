@@ -1,0 +1,31 @@
+id,usn,title,message,type,date,read
+1,1DS25AI016,Assignment Due,DBMS Normalization due in 3 days,alert,2026-05-19,False
+2,1DS25AI016,Attendance Warning,Your MP attendance is below 70%,warning,2026-05-18,False
+3,1DS25AI016,Class Cancelled,OS class on Tuesday cancelled,info,2026-05-17,True
+4,1DS25AI016,Exam Schedule,Mid-term exams from June 1-10,info,2026-05-16,True
+5,1DS25AI016,New Resource,DAA lecture notes uploaded,info,2026-05-15,True
+6,1DS25AI017,Assignment Alert,SQL Queries due in 4 days,alert,2026-05-19,False
+7,1DS25AI017,Attendance Low,Your CN attendance is at 70%,warning,2026-05-18,False
+8,1DS25AI017,Lab Notice,OS Lab exam on Monday,info,2026-05-17,True
+9,1DS25AI017,Class Rescheduled,Network class moved to Thursday,info,2026-05-16,True
+10,1DS25AI017,Quiz Notice,Quiz on DAA next week,info,2026-05-15,True
+11,1DS25AI018,Critical Alert,ER Diagram due tomorrow,alert,2026-05-19,False
+12,1DS25AI018,Attendance Critical,Your MP attendance at 57%,warning,2026-05-18,False
+13,1DS25AI018,Warning,Low attendance in 3 subjects,warning,2026-05-17,True
+14,1DS25AI018,Exam Schedule,Mid-term dates announced,info,2026-05-16,True
+15,1DS25AI018,Guest Lecture,AI workshop on Friday,info,2026-05-15,True
+16,1DS25CD016,Assignment Due,Transaction Management in 2 days,alert,2026-05-19,False
+17,1DS25CD016,Attendance Good,Great job maintaining 90%+ attendance,info,2026-05-18,False
+18,1DS25CD016,Quiz Notice,Quiz on OS next week,info,2026-05-17,True
+19,1DS25CD016,Project Update,Database project deadline extended,info,2026-05-16,True
+20,1DS25CD016,Seminar,Technical seminar on Friday,info,2026-05-15,True
+21,1DS25CD017,Reminder,Indexing Assignment due in 3 days,alert,2026-05-19,False
+22,1DS25CD017,Attendance Alert,Your DAA attendance is at 80%,warning,2026-05-18,False
+23,1DS25CD017,Lab Schedule,OS Lab exam on Wednesday,info,2026-05-17,True
+24,1DS25CD017,Library Notice,Return due date approaching,info,2026-05-16,True
+25,1DS25CD017,Club Event,Coding competition next month,info,2026-05-15,True
+26,1DS25CD018,Urgent,Normalization Forms due tomorrow,alert,2026-05-19,False
+27,1DS25CD018,Attendance Warning,Your CN attendance 71%,warning,2026-05-18,False
+28,1DS25CD018,Exam Notice,Mid-term dates released,info,2026-05-17,True
+29,1DS25CD018,Project Meeting,Meet professor for guidance,info,2026-05-16,True
+30,1DS25CD018,Workshop,AI workshop registration open,info,2026-05-15,True

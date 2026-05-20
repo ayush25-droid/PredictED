@@ -1,0 +1,49 @@
+id,usn,subject,title,due_date,priority,completed
+1,1DS25AI016,MCNM,Multivariate Calculus Problems,2026-05-22,High,False
+2,1DS25AI016,SMET,Smart Materials Report,2026-05-25,Medium,False
+3,1DS25AI016,AI,AI Applications Project,2026-05-20,High,False
+4,1DS25AI016,EEE,Circuit Analysis Lab,2026-05-28,Medium,False
+5,1DS25AI016,PYTHON,Python Programs,2026-06-01,Low,False
+6,1DS25AI016,COMSK,Presentation Skills,2026-05-18,High,True
+7,1DS25AI016,ICE,Ethics Case Study,2026-05-23,Medium,False
+8,1DS25AI016,IPBL,Project Proposal,2026-05-26,High,False
+9,1DS25AI017,MCNM,Integral Problems,2026-05-23,High,False
+10,1DS25AI017,SMET,Materials Research Paper,2026-05-26,Medium,False
+11,1DS25AI017,AI,Machine Learning Basics,2026-05-21,High,False
+12,1DS25AI017,EEE,Electrical Circuits,2026-05-27,Medium,False
+13,1DS25AI017,PYTHON,Data Structures in Python,2026-05-30,Low,False
+14,1DS25AI017,COMSK,Essay Writing,2026-05-19,High,True
+15,1DS25AI017,ICE,Constitution Quiz,2026-05-22,Medium,False
+16,1DS25AI017,IPBL,Team Project Plan,2026-05-25,High,False
+17,1DS25AI018,MCNM,Differential Equations,2026-05-24,High,False
+18,1DS25AI018,SMET,Nanomaterials Assignment,2026-05-27,Medium,False
+19,1DS25AI018,AI,Neural Networks Project,2026-05-22,High,False
+20,1DS25AI018,EEE,Electronics Lab Report,2026-05-29,Medium,False
+21,1DS25AI018,PYTHON,Web Scraping Project,2026-06-03,Low,False
+22,1DS25AI018,COMSK,Public Speaking,2026-05-17,High,True
+23,1DS25AI018,ICE,Engineering Ethics Essay,2026-05-20,Medium,False
+24,1DS25AI018,IPBL,Innovation Project,2026-05-28,High,False
+25,1DS25CD016,MCNM,Calculus Assignment,2026-05-21,High,False
+26,1DS25CD016,SMET,Smart Materials Lab,2026-05-24,Medium,False
+27,1DS25CD016,AI,AI Implementation,2026-05-20,High,False
+28,1DS25CD016,EEE,Circuit Design Project,2026-05-26,Medium,False
+29,1DS25CD016,PYTHON,Python Automation,2026-05-31,Low,False
+30,1DS25CD016,COMSK,Business Communication,2026-05-18,High,True
+31,1DS25CD016,ICE,Constitutional Rights,2026-05-22,Medium,False
+32,1DS25CD016,IPBL,Capstone Project,2026-05-25,High,False
+33,1DS25CD017,MCNM,Statistics Problems,2026-05-22,High,False
+34,1DS25CD017,SMET,Advanced Materials,2026-05-25,Medium,False
+35,1DS25CD017,AI,Deep Learning Project,2026-05-19,High,False
+36,1DS25CD017,EEE,Power Systems,2026-05-28,Medium,False
+37,1DS25CD017,PYTHON,Django Project,2026-06-02,Low,False
+38,1DS25CD017,COMSK,Email Writing,2026-05-16,High,True
+39,1DS25CD017,ICE,Professional Ethics,2026-05-21,Medium,False
+40,1DS25CD017,IPBL,Industry Project,2026-05-24,High,False
+41,1DS25CD018,MCNM,Numerical Methods,2026-05-23,High,False
+42,1DS25CD018,SMET,Material Testing,2026-05-26,Medium,False
+43,1DS25CD018,AI,NLP Assignment,2026-05-21,High,False
+44,1DS25CD018,EEE,DC Machines Lab,2026-05-29,Medium,False
+45,1DS25CD018,PYTHON,Flask Web App,2026-06-04,Low,False
+46,1DS25CD018,COMSK,Group Discussion,2026-05-15,High,True
+47,1DS25CD018,ICE,Social Responsibilities,2026-05-20,Medium,False
+48,1DS25CD018,IPBL,Research Project,2026-05-27,High,False
