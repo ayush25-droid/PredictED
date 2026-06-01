@@ -1,19 +1,51 @@
+import { Component } from 'react'
 import { motion } from 'framer-motion'
-import { useAuth } from '../context/AuthContext'
 import Sidebar from '../components/Sidebar'
-import { Calendar, GraduationCap } from 'lucide-react'
 import { calendarData, footerData, isHoliday } from '../data/calendarData'
 
-function CalendarPage() {
-  const { user } = useAuth()
+class CalendarErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <>
+          <Sidebar />
+          <div className="flex-1 overflow-auto p-8 bg-bg-primary">
+            <div className="glass-card rounded-2xl p-8 text-center text-text-secondary">
+              Calendar is unavailable right now.
+            </div>
+          </div>
+        </>
+      )
+    }
+
+    return this.props.children
+  }
+}
+
+function CalendarContent() {
+  const rows = Array.isArray(calendarData) ? calendarData : []
+  const workingDays = footerData?.workingDays || {}
+  const notes = Array.isArray(footerData?.notes) ? footerData.notes : []
 
   const getDayClass = (day) => {
-    const cleanDay = day.replace(/\*/g, '').replace(/***/g, '')
-    if (day.includes('***')) return 'bg-red-900 text-white font-bold'
-    if (day.includes('*')) return 'bg-red-800 text-white'
+    const dayText = String(day || '')
+    const cleanDay = dayText.replace(/\*/g, '')
+    if (dayText.includes('***')) return 'bg-red-900 text-white font-bold'
+    if (dayText.includes('*')) return 'bg-red-800 text-white'
     if (isHoliday(cleanDay)) return 'bg-red-700 text-white'
     return 'bg-bg-tertiary text-text-primary'
   }
+
+  const getDayValue = (row, key) => String(row?.days?.[key] || '')
 
   return (
     <>
@@ -87,44 +119,44 @@ function CalendarPage() {
                 </tr>
               </thead>
               <tbody>
-                {calendarData.map((row, index) => (
+                {rows.length > 0 ? rows.map((row, index) => (
                   <motion.tr
-                    key={row.week}
+                    key={row.week || index}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.05 }}
                     className="hover:bg-bg-tertiary/50 transition-colors"
                   >
                     <td className="border border-border p-2 text-center text-text-primary font-medium">
-                      {row.week}
+                      {row.week || '-'}
                     </td>
                     <td className="border border-border p-2 text-center text-text-primary font-bold">
-                      {row.month}
+                      {row.month || '-'}
                     </td>
-                    <td className={`border border-border p-2 text-center text-sm ${getDayClass(row.days.mon)}`}>
-                      {row.days.mon}
+                    <td className={`border border-border p-2 text-center text-sm ${getDayClass(getDayValue(row, 'mon'))}`}>
+                      {getDayValue(row, 'mon')}
                     </td>
-                    <td className={`border border-border p-2 text-center text-sm ${getDayClass(row.days.tue)}`}>
-                      {row.days.tue}
+                    <td className={`border border-border p-2 text-center text-sm ${getDayClass(getDayValue(row, 'tue'))}`}>
+                      {getDayValue(row, 'tue')}
                     </td>
-                    <td className={`border border-border p-2 text-center text-sm ${getDayClass(row.days.wed)}`}>
-                      {row.days.wed}
+                    <td className={`border border-border p-2 text-center text-sm ${getDayClass(getDayValue(row, 'wed'))}`}>
+                      {getDayValue(row, 'wed')}
                     </td>
-                    <td className={`border border-border p-2 text-center text-sm ${getDayClass(row.days.thu)}`}>
-                      {row.days.thu}
+                    <td className={`border border-border p-2 text-center text-sm ${getDayClass(getDayValue(row, 'thu'))}`}>
+                      {getDayValue(row, 'thu')}
                     </td>
-                    <td className={`border border-border p-2 text-center text-sm ${getDayClass(row.days.fri)}`}>
-                      {row.days.fri}
+                    <td className={`border border-border p-2 text-center text-sm ${getDayClass(getDayValue(row, 'fri'))}`}>
+                      {getDayValue(row, 'fri')}
                     </td>
-                    <td className={`border border-border p-2 text-center text-sm ${getDayClass(row.days.sat)}`}>
-                      {row.days.sat}
+                    <td className={`border border-border p-2 text-center text-sm ${getDayClass(getDayValue(row, 'sat'))}`}>
+                      {getDayValue(row, 'sat')}
                     </td>
                     <td className="border border-border p-2 text-center bg-yellow-500/10 font-bold text-text-primary">
-                      {row.workingDays}
+                      {row.workingDays || 0}
                     </td>
                     <td className="border border-border p-3 bg-cyan-500/5 align-top">
                       <ul className="space-y-1">
-                        {row.remarks.map((remark, idx) => (
+                        {(Array.isArray(row.remarks) ? row.remarks : []).map((remark, idx) => (
                           <li 
                             key={idx} 
                             className={`text-xs leading-relaxed ${
@@ -139,7 +171,13 @@ function CalendarPage() {
                       </ul>
                     </td>
                   </motion.tr>
-                ))}
+                )) : (
+                  <tr>
+                    <td colSpan="10" className="border border-border p-8 text-center text-text-secondary">
+                      No calendar events available.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -154,31 +192,31 @@ function CalendarPage() {
             <div className="grid grid-cols-2 md:grid-cols-7 gap-4">
               <div className="text-center p-4 bg-bg-tertiary rounded-xl">
                 <p className="text-text-tertiary text-sm">Mon</p>
-                <p className="text-2xl font-bold text-accent-primary">{footerData.workingDays.mon}</p>
+                <p className="text-2xl font-bold text-accent-primary">{workingDays.mon || 0}</p>
               </div>
               <div className="text-center p-4 bg-bg-tertiary rounded-xl">
                 <p className="text-text-tertiary text-sm">Tue</p>
-                <p className="text-2xl font-bold text-accent-primary">{footerData.workingDays.tue}</p>
+                <p className="text-2xl font-bold text-accent-primary">{workingDays.tue || 0}</p>
               </div>
               <div className="text-center p-4 bg-bg-tertiary rounded-xl">
                 <p className="text-text-tertiary text-sm">Wed</p>
-                <p className="text-2xl font-bold text-accent-primary">{footerData.workingDays.wed}</p>
+                <p className="text-2xl font-bold text-accent-primary">{workingDays.wed || 0}</p>
               </div>
               <div className="text-center p-4 bg-bg-tertiary rounded-xl">
                 <p className="text-text-tertiary text-sm">Thu</p>
-                <p className="text-2xl font-bold text-accent-primary">{footerData.workingDays.thu}</p>
+                <p className="text-2xl font-bold text-accent-primary">{workingDays.thu || 0}</p>
               </div>
               <div className="text-center p-4 bg-bg-tertiary rounded-xl">
                 <p className="text-text-tertiary text-sm">Fri</p>
-                <p className="text-2xl font-bold text-accent-primary">{footerData.workingDays.fri}</p>
+                <p className="text-2xl font-bold text-accent-primary">{workingDays.fri || 0}</p>
               </div>
               <div className="text-center p-4 bg-bg-tertiary rounded-xl">
                 <p className="text-text-tertiary text-sm">Sat</p>
-                <p className="text-2xl font-bold text-accent-primary">{footerData.workingDays.sat}</p>
+                <p className="text-2xl font-bold text-accent-primary">{workingDays.sat || 0}</p>
               </div>
               <div className="text-center p-4 bg-accent-primary/20 rounded-xl">
                 <p className="text-text-tertiary text-sm">Total</p>
-                <p className="text-2xl font-bold text-accent-primary">{footerData.workingDays.total}</p>
+                <p className="text-2xl font-bold text-accent-primary">{workingDays.total || 0}</p>
               </div>
             </div>
           </motion.div>
@@ -189,7 +227,7 @@ function CalendarPage() {
             transition={{ delay: 0.9 }}
             className="mt-6 space-y-3"
           >
-            {footerData.notes.map((note, index) => (
+            {notes.length > 0 ? notes.map((note, index) => (
               <div 
                 key={index} 
                 className="glass-card rounded-xl p-4 flex items-start gap-3"
@@ -199,7 +237,11 @@ function CalendarPage() {
                 </span>
                 <p className="text-text-secondary text-sm leading-relaxed">{note}</p>
               </div>
-            ))}
+            )) : (
+              <div className="glass-card rounded-xl p-4 text-text-secondary text-sm">
+                No calendar notes available.
+              </div>
+            )}
           </motion.div>
 
           <motion.div
@@ -209,7 +251,7 @@ function CalendarPage() {
             className="mt-8 p-4 bg-danger/10 border border-danger/30 rounded-xl text-center"
           >
             <p className="text-danger font-semibold text-sm">
-              {footerData.warning}
+              {footerData?.warning || 'Calendar data is informational and subject to change.'}
             </p>
           </motion.div>
 
@@ -230,6 +272,14 @@ function CalendarPage() {
         </motion.div>
       </div>
     </>
+  )
+}
+
+function CalendarPage() {
+  return (
+    <CalendarErrorBoundary>
+      <CalendarContent />
+    </CalendarErrorBoundary>
   )
 }
 

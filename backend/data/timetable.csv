@@ -1,31 +1,67 @@
-day,time_slot,subject_code,room,faculty
-Monday,09:00-10:00,MCNM,CB301,Prof. Sandra Jestine
-Monday,10:00-11:00,SMET,CB302,Dr. Vidya G
-Monday,11:00-12:00,AI,CB303,Prof. Ensteih Silvia
-Monday,14:00-15:00,EEE,CB304,Dr. Priyanshu Kumar
-Monday,15:00-16:00,PYTHON,CB305,Prof. Jayashri G M
-Tuesday,09:00-10:00,COMSK,CB201,Dr. Kalpana S Singh
-Tuesday,10:00-11:00,MCNM,CB301,Prof. Sandra Jestine
-Tuesday,11:00-12:00,SMET,CB302,Dr. Vidya G
-Tuesday,14:00-15:00,AI,CB303,Prof. Ensteih Silvia
-Tuesday,15:00-16:00,EEE,CB304,Dr. Priyanshu Kumar
-Wednesday,09:00-10:00,SMET,CB302,Dr. Vidya G
-Wednesday,10:00-11:00,AI,CB303,Prof. Ensteih Silvia
-Wednesday,11:00-12:00,EEE,CB304,Dr. Priyanshu Kumar
-Wednesday,14:00-15:00,PYTHON,CB305,Prof. Jayashri G M
-Wednesday,15:00-16:00,COMSK,CB201,Dr. Kalpana S Singh
-Thursday,09:00-10:00,MCNM,CB301,Prof. Sandra Jestine
-Thursday,10:00-11:00,COMSK,CB201,Dr. Kalpana S Singh
-Thursday,11:00-12:00,PYTHON,CB305,Prof. Jayashri G M
-Thursday,14:00-15:00,SMET,CB302,Dr. Vidya G
-Thursday,15:00-16:00,AI,CB303,Prof. Ensteih Silvia
-Friday,09:00-10:00,AI,CB303,Prof. Ensteih Silvia
-Friday,10:00-11:00,EEE,CB304,Dr. Priyanshu Kumar
-Friday,11:00-12:00,PYTHON,CB305,Prof. Jayashri G M
-Friday,14:00-15:00,MCNM,CB301,Prof. Sandra Jestine
-Friday,15:00-16:00,ICE,CB202,Prof. K. Anusuya
-Saturday,09:00-10:00,IPBL,CB203,Prof. Ensteih Silvia
-Saturday,10:00-11:00,EEE,CB304,Dr. Priyanshu Kumar
-Saturday,11:00-12:00,SMET,CB302,Dr. Vidya G
-Saturday,14:00-15:00,MCNM,CB301,Prof. Sandra Jestine
-Saturday,15:00-16:00,AI,CB303,Prof. Ensteih Silvia
+﻿section,day,start_time,end_time,subject,subject_code,teacher,teacher_id,room
+AI-A,Monday,10:00,11:00,Smart Materials for Emerging Technology Lab,SM for ET,Dr. Vidya G,T002,Building 09 Ground Floor AI-A
+AI-A,Monday,13:00,14:00,Python Programming,PYTHON,Prof. Jayashri G M,T005,310
+AI-A,Monday,14:00,15:00,Multivariate Calculus and Numerical Methods,MCNM,Sandra Jestine,T001,310
+AI-A,Monday,15:00,16:00,Introduction to AI and Applications,AI,Prof. Ensteih Silvia,T003,310
+AI-A,Tuesday,09:00,10:00,Python Programming,PYTHON,Prof. Jayashri G M,T005,310
+AI-A,Tuesday,10:00,11:00,Smart Materials for Emerging Technology,SM for ET,Dr. Vidya G,T002,310
+AI-A,Tuesday,11:00,12:00,Indian Constitution and Engineering Ethics,ICE,Prof. K. P. Anusuya,T007,310
+AI-A,Tuesday,12:00,13:00,Introduction to AI and Applications,AI,Prof. Ensteih Silvia,T003,310
+AI-A,Wednesday,10:00,11:00,Python Programming Lab,PYTHON,Prof. Jayashri G M,T005,CSE Block Building 14 3rd Floor AI-A
+AI-A,Wednesday,13:00,14:00,Multivariate Calculus and Numerical Methods,MCNM,Sandra Jestine,T001,310
+AI-A,Wednesday,14:00,15:00,Introduction to Electrical Engineering,EEE,Dr. Priyanshu Kumar,T004,310
+AI-A,Wednesday,15:00,16:00,Introduction to AI and Applications,AI,Prof. Ensteih Silvia,T003,310
+AI-A,Wednesday,16:00,17:00,Communication Skills,COMMUNICATION SKILL,Dr. Kalpana S Singh,T006,310
+AI-A,Thursday,09:00,10:00,Multivariate Calculus and Numerical Methods,MCNM,Sandra Jestine,T001,310
+AI-A,Thursday,10:00,11:00,Introduction to Electrical Engineering,EEE,Dr. Priyanshu Kumar,T004,310
+AI-A,Thursday,11:00,12:00,Python Programming,PYTHON,Prof. Jayashri G M,T005,310
+AI-A,Thursday,12:00,13:00,Smart Materials for Emerging Technology,SM for ET,Dr. Vidya G,T002,310
+AI-A,Friday,09:00,10:00,Introduction to Electrical Engineering,EEE,Dr. Priyanshu Kumar,T004,310
+AI-A,Friday,10:00,11:00,Multivariate Calculus and Numerical Methods,MCNM,Sandra Jestine,T001,310
+AI-A,Friday,11:00,12:00,Smart Materials for Emerging Technology,SM for ET,Dr. Vidya G,T002,310
+AI-A,Friday,12:00,13:00,Multivariate Calculus and Numerical Methods Lab,MCNM,Sandra Jestine,T001,EC Block Building 17 3rd Floor Lab C and D AI-A
+AI-A,Saturday,09:00,12:00,Interdisciplinary Project-Based Learning,IPBL,Prof. Ensteih Silvia,T008,310
+AI-B,Monday,10:00,11:00,Smart Materials for Emerging Technology Lab,SM for ET,Dr. Vidya G,T010,Building 09 Ground Floor AI-B
+AI-B,Monday,13:00,14:00,Python Programming,PYTHON,Prof. Jayashri G M,T013,311
+AI-B,Monday,14:00,15:00,Multivariate Calculus and Numerical Methods,MCNM,Sandra Jestine,T009,311
+AI-B,Monday,15:00,16:00,Introduction to AI and Applications,AI,Prof. Ensteih Silvia,T011,311
+AI-B,Tuesday,09:00,10:00,Python Programming,PYTHON,Prof. Jayashri G M,T013,311
+AI-B,Tuesday,10:00,11:00,Smart Materials for Emerging Technology,SM for ET,Dr. Vidya G,T010,311
+AI-B,Tuesday,11:00,12:00,Indian Constitution and Engineering Ethics,ICE,Prof. K. P. Anusuya,T015,311
+AI-B,Tuesday,12:00,13:00,Introduction to AI and Applications,AI,Prof. Ensteih Silvia,T011,311
+AI-B,Wednesday,10:00,11:00,Python Programming Lab,PYTHON,Prof. Jayashri G M,T013,CSE Block Building 14 3rd Floor AI-B
+AI-B,Wednesday,13:00,14:00,Multivariate Calculus and Numerical Methods,MCNM,Sandra Jestine,T009,311
+AI-B,Wednesday,14:00,15:00,Introduction to Electrical Engineering,EEE,Dr. Priyanshu Kumar,T012,311
+AI-B,Wednesday,15:00,16:00,Introduction to AI and Applications,AI,Prof. Ensteih Silvia,T011,311
+AI-B,Wednesday,16:00,17:00,Communication Skills,COMMUNICATION SKILL,Dr. Kalpana S Singh,T014,311
+AI-B,Thursday,09:00,10:00,Multivariate Calculus and Numerical Methods,MCNM,Sandra Jestine,T009,311
+AI-B,Thursday,10:00,11:00,Introduction to Electrical Engineering,EEE,Dr. Priyanshu Kumar,T012,311
+AI-B,Thursday,11:00,12:00,Python Programming,PYTHON,Prof. Jayashri G M,T013,311
+AI-B,Thursday,12:00,13:00,Smart Materials for Emerging Technology,SM for ET,Dr. Vidya G,T010,311
+AI-B,Friday,09:00,10:00,Introduction to Electrical Engineering,EEE,Dr. Priyanshu Kumar,T012,311
+AI-B,Friday,10:00,11:00,Multivariate Calculus and Numerical Methods,MCNM,Sandra Jestine,T009,311
+AI-B,Friday,11:00,12:00,Smart Materials for Emerging Technology,SM for ET,Dr. Vidya G,T010,311
+AI-B,Friday,12:00,13:00,Multivariate Calculus and Numerical Methods Lab,MCNM,Sandra Jestine,T009,EC Block Building 17 3rd Floor Lab C and D AI-B
+AI-B,Saturday,09:00,12:00,Interdisciplinary Project-Based Learning,IPBL,Prof. Ensteih Silvia,T016,311
+CD,Monday,10:00,11:00,Smart Materials for Emerging Technology Lab,SM for ET,Dr. Vidya G,T018,Building 09 Ground Floor CD
+CD,Monday,13:00,14:00,Python Programming,PYTHON,Prof. Jayashri G M,T021,312
+CD,Monday,14:00,15:00,Multivariate Calculus and Numerical Methods,MCNM,Sandra Jestine,T017,312
+CD,Monday,15:00,16:00,Introduction to AI and Applications,AI,Prof. Ensteih Silvia,T019,312
+CD,Tuesday,09:00,10:00,Python Programming,PYTHON,Prof. Jayashri G M,T021,312
+CD,Tuesday,10:00,11:00,Smart Materials for Emerging Technology,SM for ET,Dr. Vidya G,T018,312
+CD,Tuesday,11:00,12:00,Indian Constitution and Engineering Ethics,ICE,Prof. K. P. Anusuya,T023,312
+CD,Tuesday,12:00,13:00,Introduction to AI and Applications,AI,Prof. Ensteih Silvia,T019,312
+CD,Wednesday,10:00,11:00,Python Programming Lab,PYTHON,Prof. Jayashri G M,T021,CSE Block Building 14 3rd Floor CD
+CD,Wednesday,13:00,14:00,Multivariate Calculus and Numerical Methods,MCNM,Sandra Jestine,T017,312
+CD,Wednesday,14:00,15:00,Introduction to Electrical Engineering,EEE,Dr. Priyanshu Kumar,T020,312
+CD,Wednesday,15:00,16:00,Introduction to AI and Applications,AI,Prof. Ensteih Silvia,T019,312
+CD,Wednesday,16:00,17:00,Communication Skills,COMMUNICATION SKILL,Dr. Kalpana S Singh,T022,312
+CD,Thursday,09:00,10:00,Multivariate Calculus and Numerical Methods,MCNM,Sandra Jestine,T017,312
+CD,Thursday,10:00,11:00,Introduction to Electrical Engineering,EEE,Dr. Priyanshu Kumar,T020,312
+CD,Thursday,11:00,12:00,Python Programming,PYTHON,Prof. Jayashri G M,T021,312
+CD,Thursday,12:00,13:00,Smart Materials for Emerging Technology,SM for ET,Dr. Vidya G,T018,312
+CD,Friday,09:00,10:00,Introduction to Electrical Engineering,EEE,Dr. Priyanshu Kumar,T020,312
+CD,Friday,10:00,11:00,Multivariate Calculus and Numerical Methods,MCNM,Sandra Jestine,T017,312
+CD,Friday,11:00,12:00,Smart Materials for Emerging Technology,SM for ET,Dr. Vidya G,T018,312
+CD,Friday,12:00,13:00,Multivariate Calculus and Numerical Methods Lab,MCNM,Sandra Jestine,T017,EC Block Building 17 3rd Floor Lab C and D CD
+CD,Saturday,09:00,12:00,Interdisciplinary Project-Based Learning,IPBL,Prof. Ensteih Silvia,T024,312

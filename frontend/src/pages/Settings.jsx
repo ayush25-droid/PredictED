@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useTheme } from '../context/ThemeContext'
 import { useAuth } from '../context/AuthContext'
@@ -7,6 +8,23 @@ import { Moon, Sun, User, Bell, Shield, Info } from 'lucide-react'
 function Settings() {
   const { isDark, toggleTheme } = useTheme()
   const { user } = useAuth()
+  const [passwordForm, setPasswordForm] = useState({ current_password: '', new_password: '' })
+  const [passwordMessage, setPasswordMessage] = useState('')
+
+  const changePassword = async (event) => {
+    event.preventDefault()
+    setPasswordMessage('')
+    const response = await fetch('/api/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ usn: user?.usn, ...passwordForm })
+    })
+    const data = await response.json()
+    setPasswordMessage(data.message || 'Unable to update password.')
+    if (data.success) {
+      setPasswordForm({ current_password: '', new_password: '' })
+    }
+  }
 
   return (
     <>
@@ -60,6 +78,45 @@ function Settings() {
               </button>
             </div>
           </motion.div>
+
+          <motion.form
+            onSubmit={changePassword}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 }}
+            className="glass-card rounded-2xl p-6 space-y-4"
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-warning/20 flex items-center justify-center">
+                <Shield className="w-5 h-5 text-warning" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-text-primary">Password</h3>
+                <p className="text-sm text-text-tertiary">Update your login password</p>
+              </div>
+            </div>
+
+            <input
+              type="password"
+              value={passwordForm.current_password}
+              onChange={(event) => setPasswordForm({ ...passwordForm, current_password: event.target.value })}
+              placeholder="Current password"
+              className="w-full bg-bg-tertiary border border-border rounded-xl py-3 px-4 text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent-primary"
+              required
+            />
+            <input
+              type="password"
+              value={passwordForm.new_password}
+              onChange={(event) => setPasswordForm({ ...passwordForm, new_password: event.target.value })}
+              placeholder="New password"
+              className="w-full bg-bg-tertiary border border-border rounded-xl py-3 px-4 text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent-primary"
+              required
+            />
+            {passwordMessage && <p className="text-sm text-accent-primary">{passwordMessage}</p>}
+            <button type="submit" className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-accent-primary to-accent-secondary text-white font-semibold">
+              Update Password
+            </button>
+          </motion.form>
 
           <motion.div
             initial={{ opacity: 0, y: 20 }}

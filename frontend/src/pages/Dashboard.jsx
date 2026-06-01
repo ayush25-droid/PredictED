@@ -83,6 +83,8 @@ function Dashboard() {
   useEffect(() => {
     if (user?.usn) {
       fetchData()
+      const intervalId = setInterval(fetchData, 30000)
+      return () => clearInterval(intervalId)
     }
   }, [user?.usn])
 

@@ -2,13 +2,15 @@ import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useAuth } from '../context/AuthContext'
 import Sidebar from '../components/Sidebar'
-import { FileText, Calendar, AlertCircle, CheckCircle, Clock } from 'lucide-react'
+import { FileText, Calendar, CheckCircle, Download, Upload } from 'lucide-react'
 
 function Assignments() {
   const { user } = useAuth()
   const [assignments, setAssignments] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
+  const [files, setFiles] = useState({})
+  const [message, setMessage] = useState('')
 
   useEffect(() => {
     if (user?.usn) {
@@ -41,6 +43,26 @@ function Assignments() {
     }
   }
 
+  const submitAssignment = async (id) => {
+    setMessage('')
+    const formData = new FormData()
+    if (files[id]) {
+      formData.append('file', files[id])
+    }
+
+    try {
+      const res = await fetch(`/api/assignments/${id}/submit`, {
+        method: 'POST',
+        body: formData
+      })
+      const data = await res.json()
+      setMessage(data.message || 'Assignment submitted.')
+      fetchAssignments()
+    } catch (error) {
+      setMessage('Server error while submitting assignment.')
+    }
+  }
+
   const getDaysUntilDue = (dueDate) => {
     const due = new Date(dueDate)
     const today = new Date()
@@ -49,9 +71,10 @@ function Assignments() {
   }
 
   const filteredAssignments = assignments.filter(a => {
+    const completed = String(a.completed).toLowerCase() === 'true' || a.completed === true
     if (filter === 'all') return true
-    if (filter === 'pending') return !a.completed
-    if (filter === 'completed') return a.completed
+    if (filter === 'pending') return !completed
+    if (filter === 'completed') return completed
     return true
   })
 
@@ -73,6 +96,10 @@ function Assignments() {
           <h1 className="text-2xl font-bold text-text-primary">Assignments</h1>
           <p className="text-text-secondary mt-1">Track and manage your assignments</p>
         </motion.div>
+
+        {message && (
+          <p className="mb-4 text-sm text-accent-primary">{message}</p>
+        )}
 
         <div className="flex gap-2 mb-6">
           {['all', 'pending', 'completed'].map((f) => (
@@ -98,31 +125,35 @@ function Assignments() {
           ) : filteredAssignments.length > 0 ? (
             filteredAssignments.map((assign, idx) => {
               const daysLeft = getDaysUntilDue(assign.due_date)
+              const completed = String(assign.completed).toLowerCase() === 'true' || assign.completed === true
               return (
                 <motion.div
                   key={idx}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: idx * 0.05 }}
-                  className={`glass-card rounded-2xl p-6 glow-hover ${assign.completed ? 'opacity-60' : ''}`}
+                  className={`glass-card rounded-2xl p-6 glow-hover ${completed ? 'opacity-60' : ''}`}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex items-start gap-4">
                       <button
-                        onClick={() => toggleComplete(assign.id, assign.completed)}
+                        onClick={() => toggleComplete(assign.id, completed)}
                         className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
-                          assign.completed
+                          completed
                             ? 'bg-success border-success'
                             : 'border-text-tertiary hover:border-accent-primary'
                         }`}
                       >
-                        {assign.completed && <CheckCircle className="w-4 h-4 text-white" />}
+                        {completed && <CheckCircle className="w-4 h-4 text-white" />}
                       </button>
                       <div>
-                        <h3 className={`text-lg font-semibold text-text-primary ${assign.completed ? 'line-through' : ''}`}>
+                        <h3 className={`text-lg font-semibold text-text-primary ${completed ? 'line-through' : ''}`}>
                           {assign.title}
                         </h3>
                         <p className="text-sm text-text-tertiary">{assign.name}</p>
+                        {assign.description && (
+                          <p className="text-sm text-text-secondary mt-2">{assign.description}</p>
+                        )}
                       </div>
                     </div>
 
@@ -149,7 +180,37 @@ function Assignments() {
                       <FileText className="w-4 h-4" />
                       <span className="text-sm">{assign.subject}</span>
                     </div>
+                    {assign.file_path && (
+                      <a
+                        href={`/api/uploads/${assign.file_path}`}
+                        className="flex items-center gap-2 text-accent-secondary hover:text-accent-primary"
+                      >
+                        <Download className="w-4 h-4" />
+                        <span className="text-sm">{assign.file_name || 'Download file'}</span>
+                      </a>
+                    )}
                   </div>
+
+                  <div className="flex flex-col md:flex-row gap-3 mt-4">
+                    <input
+                      type="file"
+                      accept=".pdf,.doc,.docx,.zip"
+                      onChange={(e) => setFiles((current) => ({ ...current, [assign.id]: e.target.files[0] }))}
+                      className="flex-1 bg-bg-tertiary border border-border rounded-xl py-3 px-4 text-text-secondary"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => submitAssignment(assign.id)}
+                      className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-accent-primary text-white font-semibold hover:opacity-90 transition-opacity"
+                    >
+                      <Upload className="w-5 h-5" />
+                      Submit
+                    </button>
+                  </div>
+
+                  {assign.submitted_at && (
+                    <p className="text-xs text-success mt-3">Submitted at {assign.submitted_at}</p>
+                  )}
                 </motion.div>
               )
             })

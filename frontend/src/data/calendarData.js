@@ -139,10 +139,23 @@ export const footerData = {
 };
 
 export const holidaysList = [
-  "7th", "21st", "4th", "31st", "3rd", "14th", "20th", "1st", "2nd", "28th", "6th", "16th"
+  "7",
+  "21",
+  "4",
+  "31",
+  "3",
+  "14",
+  "20",
+  "1",
+  "2",
+  "28",
+  "6",
+  "16"
 ];
 
 export const isHoliday = (dateStr) => {
-  const cleanDate = dateStr.replace(/\*/g, '').replace(/***/g, '');
+  if (!dateStr) return false;
+
+  const cleanDate = String(dateStr).replace(/\*/g, '');
   return holidaysList.includes(cleanDate);
 };

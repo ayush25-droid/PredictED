@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { MessageSquare, X, Send, Bot, User, Loader } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
 
 const defaultResponses = [
   "I'm here to help with your academic journey! Ask me about study tips, attendance strategies, or any college-related questions.",
@@ -11,6 +12,7 @@ const defaultResponses = [
 ]
 
 export default function Chatbot() {
+  const { user } = useAuth()
   const [isOpen, setIsOpen] = useState(false)
   const [messages, setMessages] = useState([
     { role: 'bot', content: "Hi! I'm PredictED's AI assistant. How can I help you today?" }
@@ -27,6 +29,12 @@ export default function Chatbot() {
     scrollToBottom()
   }, [messages])
 
+  useEffect(() => {
+    const openChatbot = () => setIsOpen(true)
+    window.addEventListener('predicted-open-chatbot', openChatbot)
+    return () => window.removeEventListener('predicted-open-chatbot', openChatbot)
+  }, [])
+
   const sendMessage = async () => {
     if (!input.trim() || loading) return
 
@@ -40,10 +48,10 @@ export default function Chatbot() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMessage })
+        body: JSON.stringify({ message: userMessage, user })
       })
       const data = await res.json()
-      setMessages(prev => [...prev, { role: 'bot', content: data.response }])
+      setMessages(prev => [...prev, { role: 'bot', content: data.response || 'I could not generate a response right now.' }])
     } catch (error) {
       const fallback = defaultResponses[Math.floor(Math.random() * defaultResponses.length)]
       setMessages(prev => [...prev, { role: 'bot', content: fallback }])
@@ -87,7 +95,7 @@ export default function Chatbot() {
                 </div>
                 <div>
                   <h3 className="font-semibold text-text-primary">AI Assistant</h3>
-                  <p className="text-xs text-text-tertiary">Powered by Llama 3</p>
+                  <p className="text-xs text-text-tertiary">Local Llama 3 with app context</p>
                 </div>
               </div>
               <button

@@ -9,11 +9,12 @@ import {
   TrendingUp,
   Calendar,
   Settings,
+  MessageSquare,
   LogOut
 } from 'lucide-react'
 
 const navItems = [
-  { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { path: '/attendance', icon: ClipboardCheck, label: 'Attendance' },
   { path: '/timetable', icon: CalendarDays, label: 'Timetable' },
   { path: '/assignments', icon: FileText, label: 'Assignments' },
@@ -67,6 +68,17 @@ export default function Sidebar() {
           )
         })}
       </nav>
+
+      <div className="px-4 pb-4">
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new Event('predicted-open-chatbot'))}
+          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-text-secondary hover:bg-bg-tertiary hover:text-text-primary transition-all"
+        >
+          <MessageSquare className="w-5 h-5" />
+          <span className="font-medium">AI Assistant</span>
+        </button>
+      </div>
 
       <div className="p-4 border-t border-border">
         <div className="flex items-center gap-3 px-4 py-3 mb-3">

@@ -2,10 +2,11 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useAuth } from '../context/AuthContext'
-import { GraduationCap, Lock } from 'lucide-react'
+import { Lock, User } from 'lucide-react'
 
 export default function Login() {
   const [usn, setUsn] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const { login } = useAuth()
@@ -16,9 +17,9 @@ export default function Login() {
     setError('')
     setLoading(true)
 
-    const result = await login(usn)
+    const result = await login(usn, password)
     if (result.success) {
-      navigate('/')
+      navigate('/dashboard')
     } else {
       setError(result.message)
     }
@@ -62,12 +63,29 @@ export default function Login() {
                 Enter your USN
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-text-tertiary" />
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-text-tertiary" />
                 <input
                   type="text"
                   value={usn}
                   onChange={(e) => setUsn(e.target.value.toUpperCase())}
-                  placeholder="1CR21CS001"
+                  placeholder="Enter USN"
+                  className="w-full bg-bg-tertiary border border-border rounded-xl py-3 pl-11 pr-4 text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent-primary transition-colors"
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-2">
+                Password
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-text-tertiary" />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter password"
                   className="w-full bg-bg-tertiary border border-border rounded-xl py-3 pl-11 pr-4 text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent-primary transition-colors"
                   required
                 />
@@ -95,12 +113,13 @@ export default function Login() {
             </motion.button>
           </form>
 
-          <div className="mt-6 p-4 bg-bg-tertiary rounded-xl">
-            <p className="text-xs text-text-tertiary text-center">
-              Valid USNs: 1CR21CS001 - 1CR21CS006<br />
-              Password can be anything
-            </p>
-          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="mt-4 w-full text-sm text-accent-primary hover:text-accent-secondary transition-colors"
+          >
+            Back to Portal Selection
+          </button>
         </div>
       </motion.div>
     </div>

@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import Sidebar from '../components/Sidebar'
 import { CalendarDays, Clock, MapPin, User } from 'lucide-react'
 
-const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 function Timetable() {
   const { user } = useAuth()
@@ -101,7 +101,7 @@ function Timetable() {
                 <div className="grid grid-cols-3 gap-4 mt-6">
                   <div className="flex items-center gap-2 text-text-secondary">
                     <Clock className="w-4 h-4" />
-                    <span className="text-sm">{cls.time_slot}</span>
+                    <span className="text-sm">{cls.time_slot || `${cls.start_time} - ${cls.end_time}`}</span>
                   </div>
                   <div className="flex items-center gap-2 text-text-secondary">
                     <MapPin className="w-4 h-4" />
@@ -109,7 +109,7 @@ function Timetable() {
                   </div>
                   <div className="flex items-center gap-2 text-text-secondary">
                     <User className="w-4 h-4" />
-                    <span className="text-sm">{cls.faculty}</span>
+                    <span className="text-sm">{cls.teacher || cls.faculty}</span>
                   </div>
                 </div>
               </motion.div>
@@ -128,7 +128,7 @@ function Timetable() {
           className="mt-8"
         >
           <h2 className="text-lg font-semibold text-text-primary mb-4">Weekly Overview</h2>
-          <div className="grid grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
             {days.map((day) => {
               const dayClasses = timetable.filter(t => t.day === day)
               return (
@@ -137,7 +137,7 @@ function Timetable() {
                   <div className="space-y-2">
                     {dayClasses.slice(0, 3).map((cls, idx) => (
                       <div key={idx} className="text-xs text-text-tertiary">
-                        {cls.time_slot.split('-')[0]} - {cls.name}
+                        {(cls.start_time || cls.time_slot?.split('-')[0])} - {cls.name}
                       </div>
                     ))}
                     {dayClasses.length === 0 && (
