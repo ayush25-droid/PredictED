@@ -80,15 +80,24 @@ def prepare_assignments(df):
 
 def prepare_notifications(df):
     df = ensure_columns(df, {
+        'usn': '',
         'sender': '',
         'teacher_username': '',
         'teacher_id': '',
         'section': '',
         'recipient_type': 'student'
     })
-    for column in ['sender', 'teacher_username', 'teacher_id', 'section', 'recipient_type']:
+    for column in ['usn', 'sender', 'teacher_username', 'teacher_id', 'section', 'recipient_type']:
         df[column] = df[column].fillna('').astype(object)
     return df
+
+def unique_notifications(df):
+    if df.empty:
+        return df
+    return df.drop_duplicates(
+        subset=['title', 'message', 'type', 'date', 'sender', 'teacher_username', 'teacher_id', 'section', 'recipient_type'],
+        keep='first'
+    )
 
 def prepare_students(df):
     df = ensure_columns(df, {'section': DEFAULT_SECTION, 'password': 'student123'})
@@ -732,10 +741,16 @@ def get_notifications(usn):
         return jsonify([])
     section = student.iloc[0]['section']
     notification_section = notifications['section'].fillna('').astype(str)
+    direct = notifications['usn'] == usn
+    broadcast = (
+        notifications['recipient_type'].isin(['class', 'section', 'all']) &
+        notification_section.isin([section, '', 'ALL']) &
+        (notifications['usn'].fillna('').astype(str).isin(['', usn]))
+    )
     student_notif = notifications[
-        (notifications['usn'] == usn) |
-        ((notifications['recipient_type'].isin(['class', 'section', 'all'])) & notification_section.isin([section, '', 'ALL']))
-    ].sort_values('date', ascending=False)
+        direct | broadcast
+    ].copy()
+    student_notif = unique_notifications(student_notif).sort_values('date', ascending=False)
     return jsonify(student_notif.fillna('').to_dict('records'))
 
 @app.route('/api/notifications/<id>', methods=['PUT'])
@@ -765,6 +780,7 @@ def teacher_notifications():
             (notifications['teacher_username'] == username) &
             (notifications['teacher_id'].astype(str) == str(teacher['teacher_id']))
         ].copy()
+        sent = unique_notifications(sent)
         sent = sent.sort_values('date', ascending=False)
         return jsonify(sent.fillna('').to_dict('records'))
 
@@ -791,7 +807,8 @@ def teacher_notifications():
     current_id = next_id(notifications)
     today_date = datetime.now().strftime('%Y-%m-%d')
     rows = []
-    for usn in recipients:
+    stored_recipients = recipients if recipient_type == 'students' else ['']
+    for usn in stored_recipients:
         rows.append({
             'id': current_id,
             'usn': usn,
@@ -810,7 +827,7 @@ def teacher_notifications():
 
     notifications = pd.concat([notifications, pd.DataFrame(rows)], ignore_index=True)
     save_csv(notifications, 'notifications.csv')
-    return jsonify({'success': True, 'message': 'Notification sent successfully', 'count': len(rows)})
+    return jsonify({'success': True, 'message': 'Notification sent successfully', 'count': len(recipients)})
 
 @app.route('/api/predict', methods=['POST'])
 def predict_bunk():
@@ -882,8 +899,13 @@ def build_student_chat_context(user):
     notification_section = notifications['section'].fillna('').astype(str) if not notifications.empty else pd.Series(dtype=str)
     student_notifications = notifications[
         (notifications['usn'] == usn) |
-        ((notifications['recipient_type'].isin(['class', 'section', 'all'])) & notification_section.isin([section, '', 'ALL']))
+        (
+            (notifications['recipient_type'].isin(['class', 'section', 'all'])) &
+            notification_section.isin([section, '', 'ALL']) &
+            (notifications['usn'].fillna('').astype(str).isin(['', usn]))
+        )
     ].copy() if not notifications.empty else pd.DataFrame()
+    student_notifications = unique_notifications(student_notifications)
     section_timetable = timetable[timetable['section'] == section].copy() if not timetable.empty else pd.DataFrame()
 
     attendance_lines = []

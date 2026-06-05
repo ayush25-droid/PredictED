@@ -29,24 +29,25 @@ import {
 
 const COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4']
 
-function AnimatedNumber({ value, duration = 1000 }) {
+function AnimatedNumber({ value, duration = 1000, decimals = 0 }) {
   const [displayValue, setDisplayValue] = useState(0)
 
   useEffect(() => {
     let startTime
+    const numericValue = Number(value) || 0
     const animate = (currentTime) => {
       if (!startTime) startTime = currentTime
       const progress = Math.min((currentTime - startTime) / duration, 1)
-      setDisplayValue(Math.floor(progress * value))
+      setDisplayValue(progress * numericValue)
       if (progress < 1) requestAnimationFrame(animate)
     }
     requestAnimationFrame(animate)
   }, [value, duration])
 
-  return <span>{displayValue}</span>
+  return <span>{Number(displayValue).toFixed(decimals)}</span>
 }
 
-function StatCard({ icon: Icon, label, value, trend, color, delay }) {
+function StatCard({ icon: Icon, label, value, suffix = '', detail, trend, color, delay, decimals = 0 }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -66,8 +67,9 @@ function StatCard({ icon: Icon, label, value, trend, color, delay }) {
       </div>
       <p className="text-text-tertiary text-sm mb-1">{label}</p>
       <p className="text-2xl font-bold text-text-primary">
-        <AnimatedNumber value={value} />
+        <AnimatedNumber value={value} decimals={decimals} />{suffix}
       </p>
+      {detail && <p className="text-xs text-text-tertiary mt-1">{detail}</p>}
     </motion.div>
   )
 }
@@ -137,6 +139,9 @@ function Dashboard() {
             icon={Users}
             label="Overall Attendance"
             value={summary?.percentage || 0}
+            suffix="%"
+            decimals={1}
+            detail={`${summary?.attended || 0} / ${summary?.total || 0} classes`}
             color="bg-accent-primary/20 text-accent-primary"
             delay={0}
           />
