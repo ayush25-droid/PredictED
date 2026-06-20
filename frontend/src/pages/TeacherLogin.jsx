@@ -8,6 +8,8 @@ export default function TeacherLogin() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [resetEmail, setResetEmail] = useState('')
+  const [showReset, setShowReset] = useState(false)
   const [loading, setLoading] = useState(false)
   const { teacherLogin } = useAuth()
   const navigate = useNavigate()
@@ -24,6 +26,22 @@ export default function TeacherLogin() {
       setError(result.message)
     }
     setLoading(false)
+  }
+
+  const requestPasswordReset = async (event) => {
+    event.preventDefault()
+    setError('')
+    const response = await fetch('/api/password-reset-request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'teacher', email: resetEmail })
+    })
+    const data = await response.json()
+    setError(data.message || 'Unable to submit reset request.')
+    if (data.success) {
+      setResetEmail('')
+      setShowReset(false)
+    }
   }
 
   return (
@@ -112,6 +130,30 @@ export default function TeacherLogin() {
               {loading ? 'Signing in...' : 'Sign In'}
             </motion.button>
           </form>
+
+          <button
+            type="button"
+            onClick={() => setShowReset(!showReset)}
+            className="mt-4 w-full text-sm text-text-secondary hover:text-accent-primary transition-colors"
+          >
+            Forgot Password?
+          </button>
+
+          {showReset && (
+            <form onSubmit={requestPasswordReset} className="mt-4 space-y-3">
+              <input
+                type="email"
+                value={resetEmail}
+                onChange={(event) => setResetEmail(event.target.value)}
+                placeholder="Registered email"
+                className="w-full bg-bg-tertiary border border-border rounded-xl py-3 px-4 text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent-primary transition-colors"
+                required
+              />
+              <button type="submit" className="w-full py-3 px-4 rounded-xl bg-bg-tertiary text-accent-primary font-semibold">
+                Send Request to Admin
+              </button>
+            </form>
+          )}
 
           <button
             type="button"

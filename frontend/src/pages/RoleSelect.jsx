@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { GraduationCap, UserCheck } from 'lucide-react'
+import { GraduationCap, ShieldCheck, UserCheck } from 'lucide-react'
 
 export default function RoleSelect() {
   const navigate = useNavigate()
@@ -28,7 +28,7 @@ export default function RoleSelect() {
           <p className="text-text-secondary mt-2">Choose your portal</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <motion.button
             whileHover={{ y: -4 }}
             whileTap={{ scale: 0.98 }}
@@ -55,6 +55,20 @@ export default function RoleSelect() {
             </div>
             <h2 className="text-xl font-bold text-text-primary mb-2">Teacher</h2>
             <p className="text-text-secondary">Mark attendance by subject and keep student analytics updated.</p>
+          </motion.button>
+
+          <motion.button
+            whileHover={{ y: -4 }}
+            whileTap={{ scale: 0.98 }}
+            type="button"
+            onClick={() => navigate('/admin-login')}
+            className="glass-card rounded-2xl p-8 text-left glow-hover"
+          >
+            <div className="w-14 h-14 rounded-xl bg-warning/20 flex items-center justify-center mb-6">
+              <ShieldCheck className="w-7 h-7 text-warning" />
+            </div>
+            <h2 className="text-xl font-bold text-text-primary mb-2">Admin</h2>
+            <p className="text-text-secondary">Manage users, timetable, marks, notifications, and analytics.</p>
           </motion.button>
         </div>
       </motion.div>

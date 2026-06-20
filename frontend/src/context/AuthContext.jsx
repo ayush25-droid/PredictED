@@ -64,11 +64,39 @@ export function AuthProvider({ children }) {
           subject: data.subject,
           subject_code: data.subject_code,
           section: data.section,
+          assignments: data.assignments || [],
+          sections: data.sections || [],
           role: 'teacher'
         }
         setUser(teacherUser)
         setIsAuthenticated(true)
         localStorage.setItem('predicted_user', JSON.stringify(teacherUser))
+        return { success: true }
+      }
+      return { success: false, message: data.message }
+    } catch (error) {
+      return { success: false, message: 'Server error' }
+    }
+  }
+
+  const adminLogin = async (email, password) => {
+    try {
+      const response = await fetch('/api/admin-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      })
+      const data = await response.json()
+      if (data.success) {
+        const adminUser = {
+          admin_id: data.admin_id,
+          name: data.name,
+          email: data.email,
+          role: 'admin'
+        }
+        setUser(adminUser)
+        setIsAuthenticated(true)
+        localStorage.setItem('predicted_user', JSON.stringify(adminUser))
         return { success: true }
       }
       return { success: false, message: data.message }
@@ -84,7 +112,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated, loading, login, teacherLogin, logout }}>
+    <AuthContext.Provider value={{ user, isAuthenticated, loading, login, teacherLogin, adminLogin, logout }}>
       {children}
     </AuthContext.Provider>
   )

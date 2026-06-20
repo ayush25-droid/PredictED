@@ -1,0 +1,20 @@
+PredictED Knowledge Base
+
+PredictED is a college academic ERP for students, teachers, and administrators.
+Students can view attendance, timetable, assignments, marks, notifications, calendar events, and bunk prediction guidance.
+Teachers can manage assigned sections and subjects, mark attendance, create assignments, enter marks, send notifications, and view class analytics.
+Admins can manage students, teachers, teaching maps, timetable entries, notifications, marks reports, password reset requests, and operational dashboard metrics.
+
+Attendance rules:
+- Present and Absent are counted toward attendance percentage.
+- No Attendance is stored but not counted as a conducted class.
+- The usual shortage threshold is below 75%.
+
+Password reset:
+- Students and teachers can request a reset link from their login page using their registered email.
+- Reset links are single use and expire after 30 minutes.
+
+Chatbot policy:
+- For factual questions about attendance, timetable, assignments, marks, and notifications, answer only from retrieved application data.
+- If matching data is unavailable, say data was not found.
+- Use Llama only for summaries, recommendations, explanations, and academic advice after retrieved facts are available.

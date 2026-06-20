@@ -39,5 +39,5 @@ id,usn,title,message,type,date,read,sender,recipient_type,teacher_username,teach
 38,1DS25AI017,aaa,qwertyhj,info,2026-06-01,False,Sandra Jestine,class,sandra,T001,AIML-B
 39,1DS25AI018,aaa,qwertyhj,info,2026-06-01,False,Sandra Jestine,class,sandra,T001,AIML-B
 40,1DS25AI017,asasd,as,info,2026-06-01,False,Sandra Jestine,students,sandra,T001,AIML-B
-41,,Due date,Due date is today,alert,2026-06-02,False,Sandra Jestine,class,sandra,T009,AI-B
-42,,as,asdfg,info,2026-06-02,False,Sandra Jestine,class,sandra,T009,AI-B
+41,,Due date,Due date is today,alert,2026-06-02,False,Sandra Jestine,class,sandra,T001,AI-B
+42,,as,asdfg,info,2026-06-02,False,Sandra Jestine,class,sandra,T001,AI-B

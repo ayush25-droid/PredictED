@@ -4,6 +4,11 @@ import pandas as pd
 import os
 import math
 import uuid
+import re
+import hashlib
+import secrets
+import smtplib
+from email.message import EmailMessage
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 
@@ -16,6 +21,8 @@ ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx', 'ppt', 'pptx', 'zip'}
 DEFAULT_SECTION = 'AI-B'
 ATTENDANCE_STATUSES = ['Present', 'Absent', 'No Attendance']
 COUNTED_ATTENDANCE_STATUSES = ['Present', 'Absent']
+EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+RESET_TOKEN_MINUTES = 30
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 VALID_USNS = ['1DS25AI016', '1DS25AI017', '1DS25AI018', '1DS25CD016', '1DS25CD017', '1DS25CD018']
@@ -35,6 +42,51 @@ def ensure_columns(df, columns):
         if column not in df.columns:
             df[column] = default
     return df
+
+def hash_password(password):
+    return hashlib.sha256(str(password).encode('utf-8')).hexdigest()
+
+def verify_password(stored_password, provided_password):
+    stored = str(stored_password)
+    provided = str(provided_password)
+    return stored == provided or stored == hash_password(provided)
+
+def load_env_file():
+    env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
+    if not os.path.exists(env_path):
+        return
+    with open(env_path, 'r', encoding='utf-8') as env_file:
+        for line in env_file:
+            line = line.strip()
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+            key, value = line.split('=', 1)
+            os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+load_env_file()
+
+def valid_email(email):
+    return not email or bool(EMAIL_RE.match(str(email)))
+
+def email_exists(email, ignore=None):
+    if not email:
+        return False
+    ignore = ignore or {}
+    checks = [
+        ('students.csv', 'usn'),
+        ('teachers.csv', 'teacher_id'),
+        ('admins.csv', 'admin_id')
+    ]
+    for filename, id_field in checks:
+        df = load_csv(filename)
+        if df.empty or 'email' not in df.columns:
+            continue
+        matches = df[df['email'].fillna('').astype(str).str.lower() == str(email).lower()]
+        if id_field in ignore:
+            matches = matches[matches[id_field].astype(str) != str(ignore[id_field])]
+        if not matches.empty:
+            return True
+    return False
 
 def next_id(df):
     if df.empty or 'id' not in df.columns:
@@ -91,6 +143,59 @@ def prepare_notifications(df):
         df[column] = df[column].fillna('').astype(object)
     return df
 
+def prepare_password_reset_requests(df):
+    df = ensure_columns(df, {
+        'id': '',
+        'role': '',
+        'email': '',
+        'identifier': '',
+        'name': '',
+        'status': 'pending',
+        'requested_at': '',
+        'resolved_at': '',
+        'resolved_by': '',
+        'token_hash': '',
+        'expires_at': '',
+        'email_sent': False,
+        'reset_url': ''
+    })
+    for column in ['role', 'email', 'identifier', 'name', 'status', 'requested_at', 'resolved_at', 'resolved_by', 'token_hash', 'expires_at', 'reset_url']:
+        df[column] = df[column].fillna('').astype(str)
+    df['email_sent'] = df['email_sent'].fillna(False).astype(object)
+    return df
+
+def frontend_base_url():
+    return os.environ.get('FRONTEND_BASE_URL', 'http://localhost:3000').rstrip('/')
+
+def send_reset_email(to_email, name, reset_url):
+    host = os.environ.get('SMTP_SERVER', '').strip()
+    if not host:
+        return False, 'SMTP is not configured.'
+    port = int(os.environ.get('SMTP_PORT', '587'))
+    username = os.environ.get('SMTP_EMAIL', '').strip()
+    password = os.environ.get('SMTP_PASSWORD', '')
+    sender = os.environ.get('SMTP_FROM', username or 'noreply@predicted.local')
+
+    message = EmailMessage()
+    message['Subject'] = 'PredictED Password Reset Request'
+    message['From'] = sender
+    message['To'] = to_email
+    message.set_content(
+        "Hello,\n\n"
+        "A password reset request was received for your PredictED account.\n\n"
+        "Click the link below to reset your password:\n\n"
+        f"{reset_url}\n\n"
+        "This link expires in 30 minutes.\n\n"
+        "If you did not request this reset, please ignore this email.\n"
+    )
+
+    with smtplib.SMTP(host, port, timeout=15) as server:
+        server.starttls()
+        if username:
+            server.login(username, password)
+        server.send_message(message)
+    return True, 'Password reset link sent to registered email.'
+
 def unique_notifications(df):
     if df.empty:
         return df
@@ -100,9 +205,10 @@ def unique_notifications(df):
     )
 
 def prepare_students(df):
-    df = ensure_columns(df, {'section': DEFAULT_SECTION, 'password': 'student123'})
+    df = ensure_columns(df, {'section': DEFAULT_SECTION, 'password': 'student123', 'email': ''})
     df['section'] = df['section'].fillna(DEFAULT_SECTION).replace('', DEFAULT_SECTION)
     df['password'] = df['password'].fillna('student123').replace('', 'student123').astype(str)
+    df['email'] = df['email'].fillna('').astype(str)
     return df
 
 def public_student_records(df):
@@ -152,20 +258,137 @@ def load_teachers():
     teachers = load_csv('teachers.csv')
     if teachers.empty:
         teachers = pd.DataFrame([
-            {'teacher_id': 'T001', 'username': 'sandra', 'password': 'sandra123', 'name': 'Sandra Jestine', 'subject': 'Multivariate Calculus and Numerical Methods', 'subject_code': 'MCNM', 'section': DEFAULT_SECTION},
-            {'teacher_id': 'T002', 'username': 'jayashri', 'password': 'jay123', 'name': 'Jayashri G M', 'subject': 'Python Programming', 'subject_code': 'PYTHON', 'section': 'AIML-B'}
+            {'teacher_id': 'T001', 'username': 'sandra', 'password': 'sandra123', 'name': 'Sandra Jestine', 'email': 'sandra@predicted.local'}
         ])
     teachers = ensure_columns(teachers, {
         'teacher_id': '',
         'username': '',
         'password': '',
         'name': '',
-        'subject': '',
-        'subject_code': '',
-        'section': DEFAULT_SECTION
+        'email': ''
     })
-    teachers['section'] = teachers['section'].fillna(DEFAULT_SECTION).replace('', DEFAULT_SECTION)
+    teachers['email'] = teachers['email'].fillna('').astype(str)
     return teachers
+
+def load_teacher_assignments():
+    assignments = load_csv('teacher_assignments.csv')
+    if assignments.empty:
+        teachers = load_csv('teachers.csv')
+        rows = []
+        for _, teacher in teachers.iterrows():
+            if 'section' in teacher and 'subject_code' in teacher:
+                rows.append({
+                    'teacher_id': teacher.get('teacher_id', ''),
+                    'section': teacher.get('section', DEFAULT_SECTION),
+                    'subject': teacher.get('subject', ''),
+                    'subject_code': teacher.get('subject_code', '')
+                })
+        assignments = pd.DataFrame(rows, columns=['teacher_id', 'section', 'subject', 'subject_code'])
+        if not assignments.empty:
+            save_csv(assignments, 'teacher_assignments.csv')
+    assignments = ensure_columns(assignments, {
+        'teacher_id': '',
+        'section': DEFAULT_SECTION,
+        'subject': '',
+        'subject_code': ''
+    })
+    for column in ['teacher_id', 'section', 'subject', 'subject_code']:
+        assignments[column] = assignments[column].fillna('').astype(str)
+    assignments['section'] = assignments['section'].replace('', DEFAULT_SECTION)
+    return assignments
+
+def assignments_for_teacher(teacher):
+    assignments = load_teacher_assignments()
+    return assignments[assignments['teacher_id'].astype(str) == str(teacher.get('teacher_id', ''))].copy()
+
+def section_assignments_for_teacher(teacher):
+    assignments = assignments_for_teacher(teacher)
+    if assignments.empty:
+        return assignments
+    section = selected_section() or assignments.iloc[0]['section']
+    return assignments[assignments['section'] == section].copy()
+
+def selected_section():
+    data = request.get_json(silent=True) or {}
+    return (
+        data.get('section') or
+        data.get('selected_section') or
+        request.form.get('section') or
+        request.form.get('selected_section') or
+        request.args.get('section') or
+        request.args.get('selected_section') or
+        ''
+    )
+
+def load_admins():
+    admins = load_csv('admins.csv')
+    if admins.empty:
+        admins = pd.DataFrame([{
+            'admin_id': 'A001',
+            'name': 'PredictED Admin',
+            'email': 'admin@predicted.local',
+            'password_hash': hash_password('admin123')
+        }])
+        save_csv(admins, 'admins.csv')
+    admins = ensure_columns(admins, {
+        'admin_id': '',
+        'name': '',
+        'email': '',
+        'password_hash': ''
+    })
+    for column in ['admin_id', 'name', 'email', 'password_hash']:
+        admins[column] = admins[column].fillna('').astype(str)
+    return admins
+
+def get_admin_identity():
+    data = request.get_json(silent=True) or {}
+    admin_id = (
+        data.get('admin_id') or
+        request.args.get('admin_id') or
+        request.form.get('admin_id') or
+        ''
+    )
+    admins = load_admins()
+    match = admins[admins['admin_id'].astype(str) == str(admin_id)]
+    if match.empty:
+        return None
+    return match.iloc[0].to_dict()
+
+def require_admin():
+    admin = get_admin_identity()
+    if not admin:
+        return None, (jsonify({'success': False, 'message': 'Valid admin identity is required'}), 403)
+    return admin, None
+
+def require_admin_password(admin):
+    data = request.get_json(silent=True) or {}
+    password = str(data.get('admin_password') or request.args.get('admin_password') or '')
+    if not password or admin.get('password_hash') != hash_password(password):
+        return jsonify({'success': False, 'message': 'Admin password confirmation is required'}), 403
+    return None
+
+def prepare_marks(df):
+    df = ensure_columns(df, {
+        'student_id': '',
+        'student_name': '',
+        'section': DEFAULT_SECTION,
+        'subject': '',
+        'teacher_id': '',
+        'CIE1': '',
+        'CIE2': '',
+        'CIE3': '',
+        'SEE': ''
+    })
+    for column in ['student_id', 'student_name', 'section', 'subject', 'teacher_id']:
+        df[column] = df[column].fillna('').astype(str)
+    for column in ['CIE1', 'CIE2', 'CIE3', 'SEE']:
+        df[column] = pd.to_numeric(df[column], errors='coerce')
+    return df
+
+def marks_records(df):
+    result = df.copy()
+    result['subject_average'] = result[['CIE1', 'CIE2', 'CIE3', 'SEE']].mean(axis=1, skipna=True).round(1)
+    return result.fillna('').to_dict('records')
 
 def get_teacher_identity():
     data = request.get_json(silent=True) or {}
@@ -185,13 +408,41 @@ def require_teacher():
     username, teacher = get_teacher_identity()
     if not teacher:
         return None, None, (jsonify({'success': False, 'message': 'Valid teacher identity is required'}), 403)
+    assignments = assignments_for_teacher(teacher)
+    if not assignments.empty:
+        section = selected_section() or assignments.iloc[0]['section']
+        subject_code = (request.args.get('subject_code') or (request.get_json(silent=True) or {}).get('subject_code') or request.form.get('subject_code') or '')
+        candidates = assignments[assignments['section'] == section]
+        if subject_code:
+            candidates = candidates[candidates['subject_code'] == subject_code]
+        if candidates.empty:
+            return None, None, (jsonify({'success': False, 'message': 'Teacher is not assigned to this section/subject'}), 403)
+        teacher.update(candidates.iloc[0].to_dict())
     return username, teacher, None
+
+def require_teacher_assignment():
+    username, teacher, error_response = require_teacher()
+    if error_response:
+        return None, None, None, error_response
+    assignments = assignments_for_teacher(teacher)
+    if assignments.empty:
+        return None, None, None, (jsonify({'success': False, 'message': 'No section assignments found for this teacher'}), 403)
+    section = selected_section() or assignments.iloc[0]['section']
+    section_assignments = assignments[assignments['section'] == section]
+    if section_assignments.empty:
+        return None, None, None, (jsonify({'success': False, 'message': 'Teacher is not assigned to this section'}), 403)
+    assignment = section_assignments.iloc[0].to_dict()
+    return username, teacher, assignment, None
 
 def teacher_subject(teacher):
     subjects = load_csv('subjects.csv')
     if subjects.empty:
         return None
-    subject = subjects[subjects['code'] == teacher.get('subject_code')]
+    subject_code = teacher.get('subject_code')
+    if not subject_code:
+        teacher_assignments = assignments_for_teacher(teacher)
+        subject_code = teacher_assignments.iloc[0]['subject_code'] if not teacher_assignments.empty else ''
+    subject = subjects[subjects['code'] == subject_code]
     if subject.empty:
         subject = subjects[subjects['name'] == teacher.get('subject')]
     if subject.empty:
@@ -201,6 +452,19 @@ def teacher_subject(teacher):
 def teacher_subject_id(teacher):
     subject = teacher_subject(teacher)
     return int(subject['id']) if subject else None
+
+def teacher_allowed_subjects(teacher):
+    subjects = load_csv('subjects.csv')
+    assignments = section_assignments_for_teacher(teacher)
+    if assignments.empty or subjects.empty:
+        subject = teacher_subject(teacher)
+        return [subject] if subject else []
+    codes = assignments['subject_code'].astype(str).tolist()
+    rows = subjects[subjects['code'].astype(str).isin(codes)].copy()
+    return rows.fillna('').to_dict('records')
+
+def teacher_allowed_subject_ids(teacher):
+    return {int(subject['id']) for subject in teacher_allowed_subjects(teacher) if str(subject.get('id', '')).isdigit()}
 
 def attendance_counts(df):
     if df.empty:
@@ -241,6 +505,22 @@ def get_subject(subject_id):
     if subject.empty:
         return None
     return subject.iloc[0].to_dict()
+
+def attendance_history_records(attendance):
+    if attendance.empty:
+        return []
+    subjects = load_csv('subjects.csv')
+    rows = attendance.copy()
+    if not subjects.empty:
+        subject_cols = subjects[['id', 'code', 'name', 'faculty']].rename(columns={
+            'id': 'subject_lookup_id',
+            'code': 'subject_code',
+            'name': 'subject',
+            'faculty': 'faculty'
+        })
+        rows = rows.merge(subject_cols, left_on='subject_id', right_on='subject_lookup_id', how='left')
+    rows = rows.sort_values('date', ascending=False)
+    return rows.drop(columns=['subject_lookup_id'], errors='ignore').fillna('').to_dict('records')
 
 def save_attendance_record(usn, subject_id, status, date):
     students = prepare_students(load_csv('students.csv'))
@@ -311,7 +591,7 @@ def login():
     students = prepare_students(load_csv('students.csv'))
     student = students[students['usn'].astype(str).str.upper() == usn]
     if not student.empty:
-        if str(student.iloc[0]['password']) != password:
+        if not verify_password(student.iloc[0]['password'], password):
             return jsonify({'success': False, 'message': 'Invalid password'})
         return jsonify({
             'success': True,
@@ -338,10 +618,10 @@ def change_student_password():
     idx = students[students['usn'].astype(str).str.upper() == usn].index
     if len(idx) == 0:
         return jsonify({'success': False, 'message': 'Student not found'}), 404
-    if str(students.loc[idx[0], 'password']) != current_password:
+    if not verify_password(students.loc[idx[0], 'password'], current_password):
         return jsonify({'success': False, 'message': 'Current password is incorrect'}), 403
 
-    students.loc[idx[0], 'password'] = new_password
+    students.loc[idx[0], 'password'] = hash_password(new_password)
     save_csv(students, 'students.csv')
     return jsonify({'success': True, 'message': 'Password updated successfully'})
 
@@ -355,24 +635,160 @@ def teacher_login():
     teachers = load_teachers()
     teacher_row = teachers[teachers['username'].str.lower() == username]
 
-    if not teacher_row.empty and str(teacher_row.iloc[0]['password']) == password:
+    if not teacher_row.empty and verify_password(teacher_row.iloc[0]['password'], password):
         teacher = teacher_row.iloc[0].to_dict()
-        subject = teacher_subject(teacher)
+        teacher_assignments = assignments_for_teacher(teacher)
+        assignments_payload = teacher_assignments.fillna('').to_dict('records')
+        first_assignment = teacher_assignments.iloc[0].to_dict() if not teacher_assignments.empty else {}
+        subject = teacher_subject({**teacher, **first_assignment})
         return jsonify({
             'success': True,
             'username': username,
             'teacher_id': teacher['teacher_id'],
             'name': teacher['name'],
             'subject_id': int(subject['id']) if subject else None,
-            'subject': subject['name'] if subject else teacher['subject'],
-            'subject_code': subject['code'] if subject else teacher['subject_code'],
-            'section': teacher['section']
+            'subject': subject['name'] if subject else first_assignment.get('subject', ''),
+            'subject_code': subject['code'] if subject else first_assignment.get('subject_code', ''),
+            'section': first_assignment.get('section', ''),
+            'assignments': assignments_payload,
+            'sections': sorted(teacher_assignments['section'].unique().tolist()) if not teacher_assignments.empty else []
         })
 
     return jsonify({
         'success': False,
         'message': 'Invalid teacher credentials'
     })
+
+@app.route('/api/admin-login', methods=['POST'])
+def admin_login():
+    data = request.json or {}
+    email = data.get('email', '').lower()
+    password = data.get('password', '')
+    admins = load_admins()
+    match = admins[admins['email'].str.lower() == email]
+
+    if not match.empty and match.iloc[0]['password_hash'] == hash_password(password):
+        admin = match.iloc[0].to_dict()
+        return jsonify({
+            'success': True,
+            'admin_id': admin['admin_id'],
+            'name': admin['name'],
+            'email': admin['email'],
+            'role': 'admin'
+        })
+
+    return jsonify({'success': False, 'message': 'Invalid admin credentials'})
+
+@app.route('/api/password-reset-request', methods=['POST'])
+def create_password_reset_request():
+    data = request.json or {}
+    role = str(data.get('role', '')).lower()
+    email = str(data.get('email', '')).strip()
+    if role not in ['student', 'teacher'] or not valid_email(email):
+        return jsonify({'success': False, 'message': 'Valid role and registered email are required'}), 400
+
+    if role == 'student':
+        users = prepare_students(load_csv('students.csv'))
+        match = users[users['email'].fillna('').astype(str).str.lower() == email.lower()]
+        id_field = 'usn'
+    else:
+        users = load_teachers()
+        match = users[users['email'].fillna('').astype(str).str.lower() == email.lower()]
+        id_field = 'username'
+
+    generic_message = 'If the email is registered, a reset link has been sent.'
+    if match.empty:
+        return jsonify({'success': True, 'message': generic_message})
+
+    user_row = match.iloc[0].to_dict()
+    requests_df = prepare_password_reset_requests(load_csv('password_reset_requests.csv'))
+    token = secrets.token_urlsafe(32)
+    token_hash = hash_password(token)
+    expires_at = datetime.now() + timedelta(minutes=RESET_TOKEN_MINUTES)
+    reset_url = f"{frontend_base_url()}/reset-password?token={token}"
+
+    row = {
+        'id': next_id(requests_df),
+        'role': role,
+        'email': email,
+        'identifier': user_row.get(id_field, ''),
+        'name': user_row.get('name', ''),
+        'status': 'sent',
+        'requested_at': datetime.now().isoformat(timespec='seconds'),
+        'resolved_at': '',
+        'resolved_by': '',
+        'token_hash': token_hash,
+        'expires_at': expires_at.isoformat(timespec='seconds'),
+        'email_sent': False,
+        'reset_url': reset_url
+    }
+    email_sent = False
+    email_message = generic_message
+    try:
+        email_sent, email_message = send_reset_email(email, user_row.get('name', ''), reset_url)
+    except Exception as exc:
+        email_message = f"Reset link created, but email could not be sent: {exc}"
+    row['email_sent'] = email_sent
+    if not email_sent:
+        row['status'] = 'email_failed'
+
+    requests_df = pd.concat([requests_df, pd.DataFrame([row])], ignore_index=True)
+    save_csv(requests_df, 'password_reset_requests.csv')
+    response = {'success': email_sent, 'message': email_message if email_sent else 'Email service is currently unavailable. Please contact the administrator.'}
+    if app.debug and not email_sent:
+        response['reset_url'] = reset_url
+    return jsonify(response), 200 if email_sent else 503
+
+@app.route('/api/password-reset/<token>', methods=['GET', 'POST'])
+def password_reset_token(token):
+    requests_df = prepare_password_reset_requests(load_csv('password_reset_requests.csv'))
+    token_hash = hash_password(token)
+    matches = requests_df[
+        (requests_df['token_hash'].astype(str) == token_hash) &
+        (requests_df['status'].isin(['sent', 'email_failed']))
+    ]
+    if matches.empty:
+        return jsonify({'success': False, 'message': 'Invalid or expired reset link'}), 404
+
+    idx = matches.index[-1]
+    row = requests_df.loc[idx].to_dict()
+    expires_at = pd.to_datetime(row.get('expires_at'), errors='coerce')
+    if pd.isna(expires_at) or expires_at.to_pydatetime() < datetime.now():
+        requests_df.loc[idx, 'status'] = 'expired'
+        save_csv(requests_df, 'password_reset_requests.csv')
+        return jsonify({'success': False, 'message': 'Reset link has expired'}), 410
+
+    if request.method == 'GET':
+        return jsonify({'success': True, 'role': row.get('role'), 'email': row.get('email'), 'name': row.get('name')})
+
+    data = request.json or {}
+    new_password = str(data.get('new_password', ''))
+    if len(new_password) < 8:
+        return jsonify({'success': False, 'message': 'New password must be at least 8 characters'}), 400
+
+    if row.get('role') == 'student':
+        users = prepare_students(load_csv('students.csv'))
+        user_idx = users[users['usn'].astype(str).str.upper() == str(row.get('identifier')).upper()].index
+        if len(user_idx) == 0:
+            return jsonify({'success': False, 'message': 'Student account not found'}), 404
+        users.loc[user_idx[0], 'password'] = hash_password(new_password)
+        save_csv(users, 'students.csv')
+    elif row.get('role') == 'teacher':
+        users = load_teachers()
+        user_idx = users[users['username'].astype(str).str.lower() == str(row.get('identifier')).lower()].index
+        if len(user_idx) == 0:
+            return jsonify({'success': False, 'message': 'Teacher account not found'}), 404
+        users.loc[user_idx[0], 'password'] = hash_password(new_password)
+        save_csv(users, 'teachers.csv')
+    else:
+        return jsonify({'success': False, 'message': 'Unsupported reset link'}), 400
+
+    requests_df.loc[idx, 'status'] = 'used'
+    requests_df.loc[idx, 'token_hash'] = ''
+    requests_df.loc[idx, 'reset_url'] = ''
+    requests_df.loc[idx, 'resolved_at'] = datetime.now().isoformat(timespec='seconds')
+    save_csv(requests_df, 'password_reset_requests.csv')
+    return jsonify({'success': True, 'message': 'Password reset successfully'})
 
 @app.route('/api/teacher/change-password', methods=['POST'])
 def change_teacher_password():
@@ -388,10 +804,10 @@ def change_teacher_password():
     idx = teachers[teachers['username'].astype(str).str.lower() == username].index
     if len(idx) == 0:
         return jsonify({'success': False, 'message': 'Teacher not found'}), 404
-    if str(teachers.loc[idx[0], 'password']) != current_password:
+    if not verify_password(teachers.loc[idx[0], 'password'], current_password):
         return jsonify({'success': False, 'message': 'Current password is incorrect'}), 403
 
-    teachers.loc[idx[0], 'password'] = new_password
+    teachers.loc[idx[0], 'password'] = hash_password(new_password)
     save_csv(teachers, 'teachers.csv')
     return jsonify({'success': True, 'message': 'Password updated successfully'})
 
@@ -429,11 +845,14 @@ def teacher_mark_attendance():
         return jsonify({'success': False, 'message': 'No attendance records provided'}), 400
 
     saved_records = []
-    subject_id = teacher_subject_id(teacher)
+    allowed_subject_ids = teacher_allowed_subject_ids(teacher)
+    if not allowed_subject_ids:
+        return jsonify({'success': False, 'message': 'No assigned subjects found for this section'}), 403
+    students = prepare_students(load_csv('students.csv'))
     for record in records:
-        if int(record.get('subject_id', 0)) != int(subject_id):
+        subject_id = int(record.get('subject_id', 0))
+        if subject_id not in allowed_subject_ids:
             return jsonify({'success': False, 'message': 'Teachers can only modify their assigned subject'}), 403
-        students = prepare_students(load_csv('students.csv'))
         student = students[students['usn'] == record.get('usn', '').upper()]
         if student.empty or student.iloc[0]['section'] != teacher['section']:
             return jsonify({'success': False, 'message': 'Teachers can only modify students in their assigned section'}), 403
@@ -457,8 +876,11 @@ def teacher_mark_attendance():
 @app.route('/api/students', methods=['GET'])
 def get_students():
     students = prepare_students(load_csv('students.csv'))
-    username, teacher = get_teacher_identity()
-    if teacher:
+    has_teacher_filter = bool(request.args.get('teacher_username') or request.args.get('section'))
+    if has_teacher_filter:
+        username, teacher, error_response = require_teacher()
+        if error_response:
+            return error_response
         students = students[students['section'] == teacher['section']]
     return jsonify(public_student_records(students))
 
@@ -468,8 +890,7 @@ def get_teacher_subjects():
     if error_response:
         return error_response
 
-    subject = teacher_subject(teacher)
-    return jsonify([subject] if subject else [])
+    return jsonify(teacher_allowed_subjects(teacher))
 
 @app.route('/api/uploads/<path:filename>', methods=['GET'])
 def download_upload(filename):
@@ -523,6 +944,40 @@ def get_attendance_summary(usn):
         'percentage': round(percentage, 1)
     })
 
+@app.route('/api/attendance-history/<usn>', methods=['GET'])
+def get_student_attendance_history(usn):
+    students = prepare_students(load_csv('students.csv'))
+    student = students[students['usn'].astype(str).str.upper() == usn.upper()]
+    if student.empty:
+        return jsonify({'success': False, 'message': 'Student not found'}), 404
+
+    attendance = prepare_attendance(load_csv('attendance.csv'))
+    if attendance.empty:
+        return jsonify([])
+
+    rows = attendance[attendance['usn'].astype(str).str.upper() == usn.upper()].copy()
+    subject = request.args.get('subject', '').strip()
+    status = request.args.get('status', '').strip()
+    start_date = request.args.get('start_date', '').strip()
+    end_date = request.args.get('end_date', '').strip()
+
+    if subject:
+        subjects = load_csv('subjects.csv')
+        if not subjects.empty:
+            subject_ids = subjects[
+                (subjects['code'].astype(str) == subject) |
+                (subjects['name'].astype(str) == subject)
+            ]['id'].tolist()
+            rows = rows[rows['subject_id'].isin(subject_ids)]
+    if status in COUNTED_ATTENDANCE_STATUSES:
+        rows = rows[rows['status'] == status]
+    if start_date:
+        rows = rows[rows['date'].astype(str) >= start_date]
+    if end_date:
+        rows = rows[rows['date'].astype(str) <= end_date]
+
+    return jsonify(attendance_history_records(rows))
+
 @app.route('/api/subjects', methods=['GET'])
 def get_subjects():
     subjects = load_csv('subjects.csv')
@@ -554,8 +1009,11 @@ def get_teacher_timetable():
 
     timetable = prepare_timetable(load_csv('timetable.csv'))
     teacher_rows = timetable[
-        (timetable['teacher_id'].astype(str) == str(teacher['teacher_id'])) |
-        ((timetable['teacher'].astype(str) == str(teacher['name'])) & (timetable['section'] == teacher['section']))
+        (
+            (timetable['teacher_id'].astype(str) == str(teacher['teacher_id'])) |
+            (timetable['teacher'].astype(str) == str(teacher['name']))
+        ) &
+        (timetable['section'] == teacher['section'])
     ].copy()
     teacher_rows = teacher_rows.sort_values(['day', 'start_time'])
     teacher_rows['name'] = teacher_rows['subject']
@@ -626,7 +1084,8 @@ def teacher_assignments():
     assignments = prepare_assignments(load_csv('assignments.csv'))
     subjects = load_csv('subjects.csv')
     students = prepare_students(load_csv('students.csv'))
-    subject = teacher_subject(teacher)
+    allowed_subjects = teacher_allowed_subjects(teacher)
+    allowed_subject_codes = {subject['code'] for subject in allowed_subjects}
 
     if request.method == 'GET':
         groups = []
@@ -664,7 +1123,7 @@ def teacher_assignments():
 
     if not title or not due_date or not subject_code:
         return jsonify({'success': False, 'message': 'Title, due date, and subject are required'}), 400
-    if not teacher_subject(teacher) or subject_code != teacher_subject(teacher)['code']:
+    if subject_code not in allowed_subject_codes:
         return jsonify({'success': False, 'message': 'Teachers can only create assignments for their assigned subject'}), 403
 
     file_path, file_name = save_upload(request.files.get('file'), 'assignments')
@@ -743,7 +1202,7 @@ def get_notifications(usn):
     notification_section = notifications['section'].fillna('').astype(str)
     direct = notifications['usn'] == usn
     broadcast = (
-        notifications['recipient_type'].isin(['class', 'section', 'all']) &
+        notifications['recipient_type'].isin(['class', 'section', 'all', 'all_users']) &
         notification_section.isin([section, '', 'ALL']) &
         (notifications['usn'].fillna('').astype(str).isin(['', usn]))
     )
@@ -757,6 +1216,8 @@ def get_notifications(usn):
 def update_notification(id):
     data = request.json
     notifications = prepare_notifications(load_csv('notifications.csv'))
+    today = datetime.now().strftime('%Y-%m-%d')
+    today_name = datetime.now().strftime('%A')
 
     idx = notifications[notifications['id'].astype(str) == str(id)].index
     if len(idx) > 0:
@@ -776,10 +1237,19 @@ def teacher_notifications():
     students = prepare_students(load_csv('students.csv'))
 
     if request.method == 'GET':
-        sent = notifications[
+        teacher_owned = (
             (notifications['teacher_username'] == username) &
-            (notifications['teacher_id'].astype(str) == str(teacher['teacher_id']))
-        ].copy()
+            (notifications['teacher_id'].astype(str) == str(teacher['teacher_id'])) &
+            (notifications['section'] == teacher['section'])
+        )
+        admin_to_teacher = (
+            (notifications['recipient_type'].astype(str).isin(['teacher', 'teachers', 'all_users'])) &
+            (
+                (notifications['teacher_id'].fillna('').astype(str) == '') |
+                (notifications['teacher_id'].astype(str) == str(teacher['teacher_id']))
+            )
+        )
+        sent = notifications[teacher_owned | admin_to_teacher].copy()
         sent = unique_notifications(sent)
         sent = sent.sort_values('date', ascending=False)
         return jsonify(sent.fillna('').to_dict('records'))
@@ -829,6 +1299,51 @@ def teacher_notifications():
     save_csv(notifications, 'notifications.csv')
     return jsonify({'success': True, 'message': 'Notification sent successfully', 'count': len(recipients)})
 
+@app.route('/api/teacher/notifications/<int:notification_id>', methods=['PUT', 'DELETE'])
+def teacher_notification_item(notification_id):
+    username, teacher, error_response = require_teacher()
+    if error_response:
+        return error_response
+
+    notifications = prepare_notifications(load_csv('notifications.csv'))
+    id_match = pd.to_numeric(notifications['id'], errors='coerce') == int(notification_id)
+    owned = (
+        id_match &
+        (notifications['teacher_username'].astype(str) == username) &
+        (notifications['teacher_id'].astype(str) == str(teacher['teacher_id'])) &
+        (notifications['section'].astype(str) == teacher['section'])
+    )
+    admin_to_teacher = (
+        id_match &
+        (notifications['recipient_type'].astype(str).isin(['teacher', 'teachers', 'all_users'])) &
+        (
+            (notifications['teacher_id'].fillna('').astype(str) == '') |
+            (notifications['teacher_id'].astype(str) == str(teacher['teacher_id']))
+        )
+    )
+    if not owned.any() and not admin_to_teacher.any():
+        return jsonify({'success': False, 'message': 'Notification not found'}), 404
+
+    if request.method == 'DELETE':
+        if not owned.any():
+            return jsonify({'success': False, 'message': 'Teachers can only delete notifications they created'}), 403
+        notifications = notifications.drop(notifications[owned].index).reset_index(drop=True)
+        save_csv(notifications, 'notifications.csv')
+        return jsonify({'success': True, 'message': 'Notification deleted'})
+
+    data = request.json or {}
+    if admin_to_teacher.any() and not owned.any():
+        notifications.loc[admin_to_teacher, 'read'] = data.get('read', True)
+        save_csv(notifications, 'notifications.csv')
+        return jsonify({'success': True, 'message': 'Notification marked as read'})
+    for field in ['title', 'message', 'type']:
+        if field in data:
+            notifications.loc[owned, field] = data[field]
+    if 'read' in data:
+        notifications.loc[owned, 'read'] = data.get('read')
+    save_csv(notifications, 'notifications.csv')
+    return jsonify({'success': True, 'message': 'Notification updated'})
+
 @app.route('/api/predict', methods=['POST'])
 def predict_bunk():
     data = request.json
@@ -875,6 +1390,248 @@ def format_records(records, empty_message, limit=8):
         return empty_message
     return "\n".join(records[:limit])
 
+
+def normalize_query(text):
+    return re.findall(r'[a-z0-9]+', str(text).lower())
+
+def text_score(query, text):
+    query_terms = set(normalize_query(query))
+    if not query_terms:
+        return 0
+    text_terms = set(normalize_query(text))
+    return len(query_terms & text_terms)
+
+def retrieve_faq_answer(query):
+    faqs = load_csv('faqs.csv')
+    if faqs.empty:
+        return None
+    best = None
+    best_score = 0
+    for _, row in faqs.iterrows():
+        searchable = f"{row.get('question', '')} {row.get('answer', '')} {row.get('tags', '')}"
+        score = text_score(query, searchable)
+        if score > best_score:
+            best = row
+            best_score = score
+    if best is not None and best_score >= 2:
+        return str(best.get('answer', ''))
+    return None
+
+def retrieve_knowledge(query):
+    path = os.path.join(DATA_DIR, 'knowledge_base.txt')
+    if not os.path.exists(path):
+        return None
+    with open(path, 'r', encoding='utf-8') as kb_file:
+        paragraphs = [part.strip() for part in kb_file.read().split('\n\n') if part.strip()]
+    best = None
+    best_score = 0
+    for paragraph in paragraphs:
+        score = text_score(query, paragraph)
+        if score > best_score:
+            best = paragraph
+            best_score = score
+    return best if best_score >= 2 else None
+
+def student_scope(user):
+    usn = (user or {}).get('usn', '').upper()
+    students = prepare_students(load_csv('students.csv'))
+    student = students[students['usn'] == usn]
+    if student.empty:
+        return usn, '', None
+    return usn, student.iloc[0]['section'], student.iloc[0].to_dict()
+
+def requested_day(query):
+    q = query.lower()
+    if 'tomorrow' in q:
+        return (datetime.now() + timedelta(days=1)).strftime('%A')
+    if 'today' in q:
+        return datetime.now().strftime('%A')
+    for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']:
+        if day in q:
+            return day.title()
+    return ''
+
+def subject_matches(query, subjects):
+    q = query.lower()
+    matches = []
+    for _, subject in subjects.iterrows():
+        code = str(subject.get('code', '')).lower()
+        name = str(subject.get('name', '')).lower()
+        if code and code in q or name and name in q:
+            matches.append(subject.to_dict())
+    return matches
+
+def query_has_any(query, terms):
+    q = query.lower()
+    return any(term in q for term in terms)
+
+def detect_chat_intent(query):
+    q = query.lower()
+    if query_has_any(q, ['miss', 'missed', 'absent', 'absence', 'attendance', 'present']):
+        return 'attendance'
+    if query_has_any(q, ['timetable', 'schedule', 'class', 'classes', 'period']) and query_has_any(q, ['today', 'tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
+        return 'timetable'
+    if query_has_any(q, ['assignment', 'assignments', 'homework', 'pending', 'due', 'submission']):
+        return 'assignments'
+    if query_has_any(q, ['mark', 'marks', 'cie', 'see', 'score', 'grade']):
+        return 'marks'
+    if query_has_any(q, ['notification', 'notice', 'announcement']):
+        return 'notifications'
+    if query_has_any(q, ['advice', 'recommend', 'explain', 'summary', 'summarize', 'improve', 'what should i do', 'help me']):
+        return 'advice'
+    return 'faq'
+
+def should_use_llama(query, intent):
+    if intent in ['attendance', 'timetable', 'assignments', 'marks', 'notifications']:
+        return query_has_any(query, ['advice', 'recommend', 'explain', 'summary', 'summarize', 'improve', 'what should i do'])
+    return intent == 'advice'
+
+def log_chat_debug(question, intent, source, context):
+    print('--- PredictED Chat Debug ---', flush=True)
+    print(f'User question: {question}', flush=True)
+    print(f'Intent detected: {intent}', flush=True)
+    print(f'Data source used: {source}', flush=True)
+    print('Context sent to Llama:', flush=True)
+    print(context if context else '[NO LLAMA CALL - direct data response]', flush=True)
+    print('--- End Chat Debug ---', flush=True)
+
+def rag_attendance_answer(query, user):
+    usn, section, student = student_scope(user)
+    if not usn:
+        return None
+    attendance = prepare_attendance(load_csv('attendance.csv'))
+    subjects = load_csv('subjects.csv')
+    if attendance.empty or subjects.empty:
+        return 'Attendance data was not found.'
+    student_att = attendance[attendance['usn'] == usn]
+    if student_att.empty:
+        return 'Attendance data was not found for your account.'
+    subject_filter = subject_matches(query, subjects)
+    rows = subject_filter if subject_filter else subjects.to_dict('records')
+    lines = []
+    for subject in rows:
+        subj_att = student_att[student_att['subject_id'] == subject['id']]
+        total, present, missed = attendance_counts(subj_att)
+        percentage = round((present / total * 100) if total else 0, 1)
+        lines.append(f"{subject['code']}: {percentage}% ({present} present, {missed} absent, {total} counted classes)")
+    return 'Your attendance:\n' + '\n'.join(lines)
+
+def rag_missed_classes_answer(query, user):
+    usn, section, student = student_scope(user)
+    day = requested_day(query)
+    if not usn:
+        return None
+    attendance = prepare_attendance(load_csv('attendance.csv'))
+    subjects = load_csv('subjects.csv')
+    if attendance.empty:
+        return 'No missed class data was found.'
+    student_att = attendance[(attendance['usn'] == usn) & (attendance['status'] == 'Absent')].copy()
+    if student_att.empty:
+        return 'No missed classes were found for your account.'
+    student_att['day'] = pd.to_datetime(student_att['date'], errors='coerce').dt.day_name()
+    missed = student_att[student_att['day'] == day] if day else student_att
+    if missed.empty:
+        return f'No missed classes were found for {day}.'
+    missed = missed.merge(subjects[['id', 'code', 'name', 'faculty']], left_on='subject_id', right_on='id', how='left')
+    missed = missed.sort_values('date', ascending=False)
+    lines = [f"{row.get('date', '')} ({row.get('day', '')}): {row.get('code', row.get('subject_id', ''))} - {row.get('name', '')} with {row.get('faculty', '')}" for _, row in missed.head(12).iterrows()]
+    title = f'Classes you missed on {day}:' if day else 'Classes you missed:'
+    return title + '\n' + '\n'.join(lines)
+
+def rag_timetable_answer(query, user):
+    usn, section, student = student_scope(user)
+    day = requested_day(query)
+    if not section or not day:
+        return None
+    timetable = prepare_timetable(load_csv('timetable.csv'))
+    if timetable.empty:
+        return 'Timetable data was not found.'
+    rows = timetable[(timetable['section'] == section) & (timetable['day'].astype(str).str.lower() == day.lower())].copy()
+    if rows.empty:
+        return f'No timetable entries were found for {day}.'
+    rows = rows.sort_values('start_time')
+    lines = [f"{row.get('start_time', '')}-{row.get('end_time', '')}: {row.get('subject_code', '') or row.get('subject', '')} with {row.get('teacher', '')} in {row.get('room', '')}" for _, row in rows.iterrows()]
+    return f'Your classes for {day}:\n' + '\n'.join(lines)
+
+def rag_assignments_answer(query, user):
+    usn, section, student = student_scope(user)
+    if not usn:
+        return None
+    assignments = prepare_assignments(load_csv('assignments.csv'))
+    if assignments.empty:
+        return 'Assignment data was not found.'
+    rows = assignments[(assignments['usn'] == usn) & (assignments['section'].fillna(DEFAULT_SECTION).replace('', DEFAULT_SECTION) == section)].copy()
+    if 'pending' in query.lower():
+        rows = rows[~rows['completed'].apply(is_true)]
+    if rows.empty:
+        return 'No matching assignments were found.'
+    rows = rows.sort_values('due_date')
+    lines = [f"{row.get('title', '')} ({row.get('subject', '')}) due {row.get('due_date', '')}: {'submitted' if is_true(row.get('completed', False)) else 'pending'}" for _, row in rows.head(10).iterrows()]
+    return 'Assignments:\n' + '\n'.join(lines)
+
+def rag_marks_answer(query, user):
+    usn, section, student = student_scope(user)
+    if not usn:
+        return None
+    marks = prepare_marks(load_csv('marks.csv'))
+    if marks.empty:
+        return 'Marks data was not found.'
+    rows = marks[marks['student_id'].astype(str).str.upper() == usn]
+    subjects = load_csv('subjects.csv')
+    subject_filter = subject_matches(query, subjects) if not subjects.empty else []
+    if subject_filter:
+        codes = {item['code'] for item in subject_filter}
+        rows = rows[rows['subject'].isin(codes)]
+    if rows.empty:
+        return 'Marks data was not found for the requested subject.'
+    rows = pd.DataFrame(marks_records(rows))
+    lines = [f"{row.get('subject', '')}: CIE1 {row.get('CIE1', '')}, CIE2 {row.get('CIE2', '')}, CIE3 {row.get('CIE3', '')}, SEE {row.get('SEE', '')}, Average {row.get('subject_average', '')}%" for _, row in rows.iterrows()]
+    return 'Your marks:\n' + '\n'.join(lines)
+
+def rag_notifications_answer(query, user):
+    usn, section, student = student_scope(user)
+    if not usn:
+        return None
+    notifications = prepare_notifications(load_csv('notifications.csv'))
+    if notifications.empty:
+        return 'Notification data was not found.'
+    notification_section = notifications['section'].fillna('').astype(str)
+    rows = notifications[(notifications['usn'] == usn) | ((notifications['recipient_type'].isin(['class', 'section', 'all', 'all_users'])) & notification_section.isin([section, '', 'ALL']) & notifications['usn'].fillna('').astype(str).isin(['', usn]))].copy()
+    rows = unique_notifications(rows).sort_values('date', ascending=False)
+    if rows.empty:
+        return 'No notifications were found for you.'
+    lines = [f"{row.get('date', '')}: {row.get('title', '')} - {row.get('message', '')}" for _, row in rows.head(8).iterrows()]
+    return 'Notifications:\n' + '\n'.join(lines)
+
+def rag_answer(query, user):
+    q = query.lower()
+    intent = detect_chat_intent(query)
+    if intent == 'attendance' and query_has_any(q, ['miss', 'missed', 'absent', 'absence']):
+        answer = rag_missed_classes_answer(query, user)
+        if answer: return answer, 'attendance', intent
+    if intent == 'attendance':
+        answer = rag_attendance_answer(query, user)
+        if answer: return answer, 'attendance', intent
+    if intent == 'timetable':
+        answer = rag_timetable_answer(query, user)
+        if answer: return answer, 'timetable', intent
+    if intent == 'assignments':
+        answer = rag_assignments_answer(query, user)
+        if answer: return answer, 'assignments', intent
+    if intent == 'marks':
+        answer = rag_marks_answer(query, user)
+        if answer: return answer, 'marks', intent
+    if intent == 'notifications':
+        answer = rag_notifications_answer(query, user)
+        if answer: return answer, 'notifications', intent
+    faq = retrieve_faq_answer(query)
+    if faq:
+        return faq, 'faq', intent
+    knowledge = retrieve_knowledge(query)
+    if knowledge and not should_use_llama(query, intent):
+        return knowledge, 'knowledge_base', intent
+    return None, '', intent
+
 def build_student_chat_context(user):
     usn = (user or {}).get('usn', '').upper()
     students = prepare_students(load_csv('students.csv'))
@@ -900,7 +1657,7 @@ def build_student_chat_context(user):
     student_notifications = notifications[
         (notifications['usn'] == usn) |
         (
-            (notifications['recipient_type'].isin(['class', 'section', 'all'])) &
+            (notifications['recipient_type'].isin(['class', 'section', 'all', 'all_users'])) &
             notification_section.isin([section, '', 'ALL']) &
             (notifications['usn'].fillna('').astype(str).isin(['', usn]))
         )
@@ -961,6 +1718,10 @@ def build_teacher_chat_context(user):
         return "No teacher profile was found for the logged-in user."
 
     teacher = teacher_match.iloc[0].to_dict()
+    teacher_mappings = assignments_for_teacher(teacher)
+    if teacher_mappings.empty:
+        return "No section or subject assignments were found for this teacher."
+    teacher.update(teacher_mappings.iloc[0].to_dict())
     subject = teacher_subject(teacher)
     subject_id = teacher_subject_id(teacher)
     section = teacher['section']
@@ -1067,6 +1828,13 @@ def chat():
     if not user_message:
         return jsonify({'response': 'Please type a question so I can help with your academic data.'})
 
+    retrieved_answer, source, intent = rag_answer(user_message, user)
+    if retrieved_answer:
+        if not should_use_llama(user_message, intent):
+            log_chat_debug(user_message, intent, source, '')
+            return jsonify({'response': retrieved_answer, 'source': source, 'rag': True})
+        context = f"Retrieved facts from {source}:\n{retrieved_answer}\n\n{context}"
+
     prompt = f"""You are PredictED, a local academic assistant running through Ollama.
 Use only the application context below. If a detail is missing, say what is missing.
 Give concise, practical advice. For attendance questions, include percentages and 75% threshold guidance when available.
@@ -1078,6 +1846,7 @@ Application context:
 User question:
 {user_message}
 """
+    log_chat_debug(user_message, intent, source or 'local_context', context)
 
     try:
         import requests
@@ -1115,6 +1884,504 @@ def get_attendance_trend(usn):
 
     return jsonify(attendance_daily_trend(student_att))
 
+@app.route('/api/marks/<usn>', methods=['GET'])
+def get_student_marks(usn):
+    marks = prepare_marks(load_csv('marks.csv'))
+    student_marks = marks[marks['student_id'].astype(str).str.upper() == usn.upper()].copy()
+    return jsonify(marks_records(student_marks))
+
+@app.route('/api/teacher/marks', methods=['GET', 'POST'])
+def teacher_marks():
+    username, teacher, error_response = require_teacher()
+    if error_response:
+        return error_response
+
+    marks = prepare_marks(load_csv('marks.csv'))
+    students = prepare_students(load_csv('students.csv'))
+    section_students = students[students['section'] == teacher['section']].copy()
+    subject_code = teacher.get('subject_code', '')
+    teacher_id = str(teacher.get('teacher_id', ''))
+
+    if request.method == 'GET':
+        section_marks = marks[
+            (marks['section'] == teacher['section']) &
+            (marks['subject'] == subject_code) &
+            (marks['teacher_id'].astype(str) == teacher_id)
+        ].copy() if not marks.empty else pd.DataFrame()
+        rows = []
+        for _, student in section_students.iterrows():
+            existing = section_marks[section_marks['student_id'] == student['usn']] if not section_marks.empty else pd.DataFrame()
+            if existing.empty:
+                rows.append({
+                    'student_id': student['usn'],
+                    'student_name': student['name'],
+                    'section': teacher['section'],
+                    'subject': subject_code,
+                    'teacher_id': teacher_id,
+                    'CIE1': '',
+                    'CIE2': '',
+                    'CIE3': '',
+                    'SEE': ''
+                })
+            else:
+                rows.append(existing.iloc[0].to_dict())
+        return jsonify(marks_records(pd.DataFrame(rows)))
+
+    data = request.json or {}
+    records = data.get('records', [])
+    if not records:
+        return jsonify({'success': False, 'message': 'No marks records provided'}), 400
+
+    if marks.empty:
+        marks = pd.DataFrame(columns=['student_id', 'student_name', 'section', 'subject', 'teacher_id', 'CIE1', 'CIE2', 'CIE3', 'SEE'])
+
+    saved = 0
+    allowed_usns = set(section_students['usn'].astype(str))
+    for record in records:
+        student_id = str(record.get('student_id', '')).upper()
+        if student_id not in allowed_usns:
+            return jsonify({'success': False, 'message': 'Teachers can only edit students in their section'}), 403
+        student = section_students[section_students['usn'] == student_id].iloc[0]
+        existing = (
+            (marks['student_id'].astype(str) == student_id) &
+            (marks['subject'].astype(str) == subject_code) &
+            (marks['section'].astype(str) == teacher['section'])
+        )
+        values = {
+            'student_id': student_id,
+            'student_name': student['name'],
+            'section': teacher['section'],
+            'subject': subject_code,
+            'teacher_id': teacher_id,
+            'CIE1': record.get('CIE1', ''),
+            'CIE2': record.get('CIE2', ''),
+            'CIE3': record.get('CIE3', ''),
+            'SEE': record.get('SEE', '')
+        }
+        if existing.any():
+            for key, value in values.items():
+                marks.loc[existing, key] = value
+        else:
+            marks = pd.concat([marks, pd.DataFrame([values])], ignore_index=True)
+        saved += 1
+
+    save_csv(prepare_marks(marks), 'marks.csv')
+    return jsonify({'success': True, 'message': 'Marks saved successfully', 'count': saved})
+
+@app.route('/api/admin/students', methods=['GET', 'POST'])
+def admin_students():
+    admin, error_response = require_admin()
+    if error_response:
+        return error_response
+    students = prepare_students(load_csv('students.csv'))
+    if request.method == 'GET':
+        return jsonify(public_student_records(students))
+    data = request.json or {}
+    usn = data.get('usn', '').upper()
+    email = str(data.get('email', '')).strip()
+    if not usn or not data.get('name'):
+        return jsonify({'success': False, 'message': 'USN and name are required'}), 400
+    if not email:
+        return jsonify({'success': False, 'message': 'Email is required'}), 400
+    if not valid_email(email):
+        return jsonify({'success': False, 'message': 'Invalid email format'}), 400
+    if email_exists(email):
+        return jsonify({'success': False, 'message': 'Email already exists'}), 400
+    if not students[students['usn'].astype(str).str.upper() == usn].empty:
+        return jsonify({'success': False, 'message': 'Student already exists'}), 400
+    row = {
+        'usn': usn,
+        'name': data.get('name', ''),
+        'email': email,
+        'phone': data.get('phone', ''),
+        'semester': data.get('semester', ''),
+        'branch': data.get('branch', ''),
+        'section': data.get('section', DEFAULT_SECTION),
+        'password': data.get('password', 'student123')
+    }
+    students = pd.concat([students, pd.DataFrame([row])], ignore_index=True)
+    save_csv(students, 'students.csv')
+    return jsonify({'success': True, 'message': 'Student created'})
+
+@app.route('/api/admin/students/<usn>', methods=['PUT', 'DELETE'])
+def admin_student_item(usn):
+    admin, error_response = require_admin()
+    if error_response:
+        return error_response
+    students = prepare_students(load_csv('students.csv'))
+    idx = students[students['usn'].astype(str).str.upper() == usn.upper()].index
+    if len(idx) == 0:
+        return jsonify({'success': False, 'message': 'Student not found'}), 404
+    if request.method == 'DELETE':
+        password_error = require_admin_password(admin)
+        if password_error:
+            return password_error
+        students = students.drop(idx)
+        save_csv(students, 'students.csv')
+        return jsonify({'success': True, 'message': 'Student deleted'})
+    data = request.json or {}
+    email = str(data.get('email', students.loc[idx[0], 'email'])).strip()
+    if not email:
+        return jsonify({'success': False, 'message': 'Email is required'}), 400
+    if not valid_email(email):
+        return jsonify({'success': False, 'message': 'Invalid email format'}), 400
+    if email_exists(email, ignore={'usn': usn.upper()}):
+        return jsonify({'success': False, 'message': 'Email already exists'}), 400
+    for field in ['name', 'email', 'phone', 'semester', 'branch', 'section', 'password']:
+        if field in data:
+            students.loc[idx[0], field] = data[field]
+    save_csv(students, 'students.csv')
+    return jsonify({'success': True, 'message': 'Student updated'})
+
+@app.route('/api/admin/teachers', methods=['GET', 'POST'])
+def admin_teachers():
+    admin, error_response = require_admin()
+    if error_response:
+        return error_response
+    teachers = load_teachers()
+    if request.method == 'GET':
+        return jsonify(teachers.drop(columns=['password'], errors='ignore').fillna('').to_dict('records'))
+    data = request.json or {}
+    email = str(data.get('email', '')).strip()
+    if not data.get('teacher_id') or not data.get('username') or not data.get('name'):
+        return jsonify({'success': False, 'message': 'Teacher ID, username, and name are required'}), 400
+    if not email:
+        return jsonify({'success': False, 'message': 'Email is required'}), 400
+    if not valid_email(email):
+        return jsonify({'success': False, 'message': 'Invalid email format'}), 400
+    if email_exists(email):
+        return jsonify({'success': False, 'message': 'Email already exists'}), 400
+    if not teachers[teachers['teacher_id'].astype(str) == str(data.get('teacher_id'))].empty:
+        return jsonify({'success': False, 'message': 'Teacher already exists'}), 400
+    row = {
+        'teacher_id': data.get('teacher_id'),
+        'username': data.get('username'),
+        'password': data.get('password', 'teacher123'),
+        'name': data.get('name'),
+        'email': email
+    }
+    teachers = pd.concat([teachers, pd.DataFrame([row])], ignore_index=True)
+    save_csv(teachers, 'teachers.csv')
+    return jsonify({'success': True, 'message': 'Teacher created'})
+
+@app.route('/api/admin/teachers/<teacher_id>', methods=['PUT', 'DELETE'])
+def admin_teacher_item(teacher_id):
+    admin, error_response = require_admin()
+    if error_response:
+        return error_response
+    teachers = load_teachers()
+    idx = teachers[teachers['teacher_id'].astype(str) == str(teacher_id)].index
+    if len(idx) == 0:
+        return jsonify({'success': False, 'message': 'Teacher not found'}), 404
+    if request.method == 'DELETE':
+        password_error = require_admin_password(admin)
+        if password_error:
+            return password_error
+        teachers = teachers.drop(idx)
+        save_csv(teachers, 'teachers.csv')
+        return jsonify({'success': True, 'message': 'Teacher deleted'})
+    data = request.json or {}
+    email = str(data.get('email', teachers.loc[idx[0], 'email'])).strip()
+    if not email:
+        return jsonify({'success': False, 'message': 'Email is required'}), 400
+    if not valid_email(email):
+        return jsonify({'success': False, 'message': 'Invalid email format'}), 400
+    if email_exists(email, ignore={'teacher_id': teacher_id}):
+        return jsonify({'success': False, 'message': 'Email already exists'}), 400
+    for field in ['username', 'password', 'name', 'email']:
+        if field in data:
+            teachers.loc[idx[0], field] = data[field]
+    save_csv(teachers, 'teachers.csv')
+    return jsonify({'success': True, 'message': 'Teacher updated'})
+
+@app.route('/api/admin/teacher-assignments', methods=['GET', 'POST'])
+def admin_teacher_assignments():
+    admin, error_response = require_admin()
+    if error_response:
+        return error_response
+    mappings = load_teacher_assignments()
+    teachers = load_teachers()
+    if request.method == 'GET':
+        rows = mappings.merge(teachers[['teacher_id', 'name']], on='teacher_id', how='left')
+        records = rows.fillna('').to_dict('records')
+        for index, row in enumerate(records):
+            row['id'] = index
+        return jsonify(records)
+    data = request.json or {}
+    teacher_id = str(data.get('teacher_id', '')).strip()
+    section = str(data.get('section', DEFAULT_SECTION)).strip() or DEFAULT_SECTION
+    subject_code = str(data.get('subject_code', '')).strip()
+    subject = str(data.get('subject', '')).strip()
+    if not teacher_id or not subject_code:
+        return jsonify({'success': False, 'message': 'Teacher ID and subject code are required'}), 400
+    if teachers[teachers['teacher_id'].astype(str) == teacher_id].empty:
+        return jsonify({'success': False, 'message': 'Teacher account not found'}), 404
+    duplicate = mappings[
+        (mappings['teacher_id'].astype(str) == teacher_id) &
+        (mappings['section'].astype(str) == section) &
+        (mappings['subject_code'].astype(str) == subject_code)
+    ]
+    if not duplicate.empty:
+        return jsonify({'success': False, 'message': 'Teacher assignment already exists'}), 400
+    mappings = pd.concat([mappings, pd.DataFrame([{
+        'teacher_id': teacher_id,
+        'section': section,
+        'subject': subject,
+        'subject_code': subject_code
+    }])], ignore_index=True)
+    save_csv(mappings, 'teacher_assignments.csv')
+    return jsonify({'success': True, 'message': 'Teacher assignment created'})
+
+@app.route('/api/admin/teacher-assignments/<int:row_id>', methods=['PUT', 'DELETE'])
+def admin_teacher_assignment_item(row_id):
+    admin, error_response = require_admin()
+    if error_response:
+        return error_response
+    mappings = load_teacher_assignments()
+    if row_id < 0 or row_id >= len(mappings):
+        return jsonify({'success': False, 'message': 'Teacher assignment not found'}), 404
+    if request.method == 'DELETE':
+        password_error = require_admin_password(admin)
+        if password_error:
+            return password_error
+        mappings = mappings.drop(mappings.index[row_id]).reset_index(drop=True)
+        save_csv(mappings, 'teacher_assignments.csv')
+        return jsonify({'success': True, 'message': 'Teacher assignment deleted'})
+    data = request.json or {}
+    for field in ['teacher_id', 'section', 'subject', 'subject_code']:
+        if field in data:
+            mappings.loc[mappings.index[row_id], field] = data[field]
+    save_csv(mappings, 'teacher_assignments.csv')
+    return jsonify({'success': True, 'message': 'Teacher assignment updated'})
+
+@app.route('/api/admin/timetable', methods=['GET', 'POST'])
+def admin_timetable():
+    admin, error_response = require_admin()
+    if error_response:
+        return error_response
+    timetable = prepare_timetable(load_csv('timetable.csv'))
+    if request.method == 'GET':
+        rows = timetable.fillna('').to_dict('records')
+        for index, row in enumerate(rows):
+            row['id'] = index
+        return jsonify(rows)
+    data = request.json or {}
+    row = {field: data.get(field, '') for field in ['section', 'day', 'start_time', 'end_time', 'subject', 'subject_code', 'teacher', 'teacher_id', 'room']}
+    timetable = pd.concat([timetable.drop(columns=['time_slot'], errors='ignore'), pd.DataFrame([row])], ignore_index=True)
+    save_csv(timetable, 'timetable.csv')
+    return jsonify({'success': True, 'message': 'Class added'})
+
+@app.route('/api/admin/timetable/<int:row_id>', methods=['PUT', 'DELETE'])
+def admin_timetable_item(row_id):
+    admin, error_response = require_admin()
+    if error_response:
+        return error_response
+    timetable = prepare_timetable(load_csv('timetable.csv')).drop(columns=['time_slot'], errors='ignore')
+    if row_id < 0 or row_id >= len(timetable):
+        return jsonify({'success': False, 'message': 'Class not found'}), 404
+    if request.method == 'DELETE':
+        password_error = require_admin_password(admin)
+        if password_error:
+            return password_error
+        timetable = timetable.drop(timetable.index[row_id])
+        save_csv(timetable, 'timetable.csv')
+        return jsonify({'success': True, 'message': 'Class deleted'})
+    data = request.json or {}
+    for field in ['section', 'day', 'start_time', 'end_time', 'subject', 'subject_code', 'teacher', 'teacher_id', 'room']:
+        if field in data:
+            timetable.iat[row_id, timetable.columns.get_loc(field)] = data[field]
+    save_csv(timetable, 'timetable.csv')
+    return jsonify({'success': True, 'message': 'Class updated'})
+
+@app.route('/api/admin/marks', methods=['GET', 'POST'])
+def admin_marks():
+    admin, error_response = require_admin()
+    if error_response:
+        return error_response
+    marks = prepare_marks(load_csv('marks.csv'))
+    if request.method == 'GET':
+        return jsonify(marks_records(marks))
+    data = request.json or {}
+    records = data.get('records', [data])
+    if marks.empty:
+        marks = pd.DataFrame(columns=['student_id', 'student_name', 'section', 'subject', 'teacher_id', 'CIE1', 'CIE2', 'CIE3', 'SEE'])
+    for record in records:
+        student_id = str(record.get('student_id', '')).upper()
+        subject = str(record.get('subject', ''))
+        section = str(record.get('section', ''))
+        existing = (
+            (marks['student_id'].astype(str) == student_id) &
+            (marks['subject'].astype(str) == subject) &
+            (marks['section'].astype(str) == section)
+        )
+        values = {field: record.get(field, '') for field in ['student_id', 'student_name', 'section', 'subject', 'teacher_id', 'CIE1', 'CIE2', 'CIE3', 'SEE']}
+        values['student_id'] = student_id
+        if existing.any():
+            for key, value in values.items():
+                marks.loc[existing, key] = value
+        else:
+            marks = pd.concat([marks, pd.DataFrame([values])], ignore_index=True)
+    save_csv(prepare_marks(marks), 'marks.csv')
+    return jsonify({'success': True, 'message': 'Marks saved'})
+
+@app.route('/api/admin/attendance', methods=['GET'])
+def admin_attendance():
+    admin, error_response = require_admin()
+    if error_response:
+        return error_response
+    attendance = prepare_attendance(load_csv('attendance.csv'))
+    if attendance.empty:
+        return jsonify([])
+    usn = request.args.get('usn', '').upper()
+    if usn:
+        attendance = attendance[attendance['usn'].astype(str).str.upper() == usn]
+    students = prepare_students(load_csv('students.csv'))
+    subjects = load_csv('subjects.csv')
+    rows = attendance.copy()
+    rows['id'] = rows.index
+    if not students.empty:
+        student_cols = students[['usn', 'name', 'section']].rename(columns={'name': 'student_name', 'section': 'student_section'})
+        rows = rows.merge(student_cols, on='usn', how='left')
+    if not subjects.empty:
+        subject_cols = subjects[['id', 'code', 'name']].rename(columns={'id': 'subject_lookup_id', 'code': 'subject_code', 'name': 'subject_name'})
+        rows = rows.merge(subject_cols, left_on='subject_id', right_on='subject_lookup_id', how='left')
+    return jsonify(rows.drop(columns=['subject_lookup_id'], errors='ignore').fillna('').to_dict('records'))
+
+@app.route('/api/admin/assignments', methods=['GET'])
+def admin_assignments():
+    admin, error_response = require_admin()
+    if error_response:
+        return error_response
+    assignments = prepare_assignments(load_csv('assignments.csv'))
+    if assignments.empty:
+        return jsonify([])
+    rows = assignments.copy()
+    rows['id'] = rows.index
+    return jsonify(rows.fillna('').to_dict('records'))
+
+@app.route('/api/admin/notifications', methods=['GET', 'POST'])
+def admin_send_notification():
+    admin, error_response = require_admin()
+    if error_response:
+        return error_response
+    notifications = prepare_notifications(load_csv('notifications.csv'))
+    if request.method == 'GET':
+        sent = unique_notifications(notifications).sort_values('date', ascending=False)
+        return jsonify(sent.fillna('').to_dict('records'))
+    data = request.json or {}
+    title = data.get('title', '').strip()
+    message = data.get('message', '').strip()
+    target_type = data.get('target_type', 'all')
+    if not title or not message:
+        return jsonify({'success': False, 'message': 'Title and message are required'}), 400
+    current_id = next_id(notifications)
+    section = data.get('section', '')
+    usn = data.get('usn', '').upper() if target_type == 'student' else ''
+    if target_type in ['all', 'all_users']:
+        section = 'ALL'
+    row = {
+        'id': current_id,
+        'usn': usn,
+        'title': title,
+        'message': message,
+        'type': data.get('type', 'info'),
+        'date': datetime.now().strftime('%Y-%m-%d'),
+        'read': False,
+        'sender': admin['name'],
+        'recipient_type': target_type,
+        'teacher_username': '',
+        'teacher_id': data.get('teacher_id', ''),
+        'section': section
+    }
+    notifications = pd.concat([notifications, pd.DataFrame([row])], ignore_index=True)
+    save_csv(notifications, 'notifications.csv')
+    return jsonify({'success': True, 'message': 'Notification sent'})
+
+@app.route('/api/admin/password-reset-requests', methods=['GET'])
+def admin_password_reset_requests():
+    admin, error_response = require_admin()
+    if error_response:
+        return error_response
+    requests_df = prepare_password_reset_requests(load_csv('password_reset_requests.csv'))
+    requests_df = requests_df.sort_values('requested_at', ascending=False)
+    return jsonify(requests_df.fillna('').to_dict('records'))
+
+@app.route('/api/admin/analytics', methods=['GET'])
+def admin_analytics():
+    admin, error_response = require_admin()
+    if error_response:
+        return error_response
+    students = prepare_students(load_csv('students.csv'))
+    teachers = load_teachers()
+    attendance = prepare_attendance(load_csv('attendance.csv'))
+    marks = prepare_marks(load_csv('marks.csv'))
+    assignments = prepare_assignments(load_csv('assignments.csv'))
+    notifications = prepare_notifications(load_csv('notifications.csv'))
+    today = datetime.now().strftime('%Y-%m-%d')
+    today_name = datetime.now().strftime('%A')
+
+    section_perf = []
+    if not marks.empty:
+        mark_rows = pd.DataFrame(marks_records(marks))
+        if not mark_rows.empty:
+            section_perf = mark_rows.groupby('section')['subject_average'].mean().round(1).reset_index().to_dict('records')
+            subject_perf = mark_rows.groupby('subject')['subject_average'].mean().round(1).reset_index().to_dict('records')
+            top_performers = mark_rows.sort_values('subject_average', ascending=False).head(8).to_dict('records')
+            at_risk = mark_rows[mark_rows['subject_average'] < 40].sort_values('subject_average').head(8).to_dict('records')
+        else:
+            subject_perf, top_performers, at_risk = [], [], []
+    else:
+        subject_perf, top_performers, at_risk = [], [], []
+
+    attendance_stats = []
+    students_present_today = 0
+    students_absent_today = 0
+    attendance_shortage_students = 0
+    if not attendance.empty:
+        today_attendance = attendance[attendance['date'].astype(str) == today]
+        students_present_today = today_attendance[today_attendance['status'] == 'Present']['usn'].nunique()
+        students_absent_today = today_attendance[today_attendance['status'] == 'Absent']['usn'].nunique()
+        for section, group in attendance.groupby('section'):
+            total, present, missed = attendance_counts(group)
+            attendance_stats.append({'section': section, 'total': total, 'present': present, 'missed': missed, 'percentage': round((present / total * 100) if total else 0, 1)})
+        for usn, group in attendance.groupby('usn'):
+            total, present, missed = attendance_counts(group)
+            if total and (present / total * 100) < 75:
+                attendance_shortage_students += 1
+
+    timetable = prepare_timetable(load_csv('timetable.csv'))
+    classes_running_today = len(timetable[timetable['day'].astype(str).str.lower() == today_name.lower()]) if not timetable.empty else 0
+    assignments_due_this_week = 0
+    pending_assignments = 0
+    if not assignments.empty:
+        due_dates = pd.to_datetime(assignments['due_date'], errors='coerce')
+        week_end = datetime.now() + timedelta(days=7)
+        assignments_due_this_week = int(((due_dates >= datetime.now()) & (due_dates <= week_end)).sum())
+        pending_assignments = int((~assignments['completed'].apply(is_true)).sum())
+    unread_notifications = int((notifications['read'].astype(str).str.lower() != 'true').sum()) if not notifications.empty else 0
+
+    return jsonify({
+        'cards': {
+            'total_students': len(students),
+            'total_teachers': len(teachers),
+            'total_assignments': len(assignments),
+            'total_notifications': len(notifications),
+            'total_marks': len(marks),
+            'students_present_today': students_present_today,
+            'students_absent_today': students_absent_today,
+            'classes_running_today': classes_running_today,
+            'assignments_due_this_week': assignments_due_this_week,
+            'unread_notifications': unread_notifications,
+            'attendance_shortage_students': attendance_shortage_students,
+            'pending_assignments': max(0, pending_assignments)
+        },
+        'section_performance': section_perf,
+        'subject_performance': subject_perf,
+        'attendance_stats': attendance_stats,
+        'top_performers': top_performers,
+        'at_risk_students': at_risk
+    })
+
 @app.route('/api/teacher/attendance/history', methods=['GET'])
 def teacher_attendance_history():
     username, teacher, error_response = require_teacher()
@@ -1130,16 +2397,19 @@ def teacher_attendance_history():
 
     result = attendance.copy()
     usn = request.args.get('usn', '').upper()
-    teacher_subj_id = teacher_subject_id(teacher)
-    subject_id = request.args.get('subject_id', str(teacher_subj_id))
+    allowed_subject_ids = teacher_allowed_subject_ids(teacher)
+    if not allowed_subject_ids:
+        return jsonify([])
+    default_subject_id = next(iter(allowed_subject_ids))
+    subject_id = request.args.get('subject_id', str(default_subject_id))
     date = request.args.get('date', '')
-    if int(subject_id) != int(teacher_subj_id):
+    if int(subject_id) not in allowed_subject_ids:
         return jsonify({'success': False, 'message': 'Teachers can only view their assigned subject'}), 403
 
     if usn:
         result = result[result['usn'] == usn]
     result = result[
-        (result['subject_id'] == int(teacher_subj_id)) &
+        (result['subject_id'] == int(subject_id)) &
         (result['section'] == teacher['section'])
     ]
     if date:
@@ -1156,7 +2426,10 @@ def teacher_student_attendance(usn):
     if error_response:
         return error_response
 
-    subject = teacher_subject(teacher)
+    allowed_subjects = teacher_allowed_subjects(teacher)
+    allowed_subject_ids = teacher_allowed_subject_ids(teacher)
+    if not allowed_subjects:
+        return jsonify({'success': False, 'message': 'No assigned subjects found for this section'}), 403
     students = prepare_students(load_csv('students.csv'))
     student = students[students['usn'] == usn]
     if student.empty or student.iloc[0]['section'] != teacher['section']:
@@ -1164,7 +2437,10 @@ def teacher_student_attendance(usn):
 
     history = prepare_attendance(load_csv('attendance.csv'))
     subjects = load_csv('subjects.csv')
-    subject_id = teacher_subject_id(teacher)
+    subject_id = int(request.args.get('subject_id') or allowed_subjects[0]['id'])
+    if subject_id not in allowed_subject_ids:
+        return jsonify({'success': False, 'message': 'Teachers can only view their assigned subject'}), 403
+    subject = next((item for item in allowed_subjects if int(item['id']) == subject_id), allowed_subjects[0])
     student_att = history[
         (history['usn'] == usn) &
         (history['subject_id'] == subject_id) &
@@ -1220,15 +2496,29 @@ def teacher_class_analytics():
     attendance = prepare_attendance(load_csv('attendance.csv'))
     assignments = prepare_assignments(load_csv('assignments.csv'))
     notifications = prepare_notifications(load_csv('notifications.csv'))
-    subject = teacher_subject(teacher)
-    subject_id = teacher_subject_id(teacher)
+    allowed_subjects = teacher_allowed_subjects(teacher)
+    allowed_subject_ids = teacher_allowed_subject_ids(teacher)
+    if not allowed_subjects:
+        return jsonify({'success': False, 'message': 'No assigned subjects found for this section'}), 403
+    subject_id = int(request.args.get('subject_id') or allowed_subjects[0]['id'])
+    if subject_id not in allowed_subject_ids:
+        return jsonify({'success': False, 'message': 'Teachers can only view their assigned subject'}), 403
+    subject = next((item for item in allowed_subjects if int(item['id']) == subject_id), allowed_subjects[0])
     section_students = students[students['section'] == teacher['section']].copy()
     subject_attendance = attendance[
         (attendance['subject_id'] == subject_id) &
         (attendance['section'] == teacher['section'])
     ].copy() if not attendance.empty else pd.DataFrame()
-    teacher_assignments_df = assignments[assignments['creator'] == username].copy()
-    teacher_notifications_df = notifications[notifications['teacher_username'] == username].copy()
+    teacher_assignments_df = assignments[
+        (assignments['creator'] == username) &
+        (assignments['teacher_id'].astype(str) == str(teacher['teacher_id'])) &
+        (assignments['section'] == teacher['section'])
+    ].copy()
+    teacher_notifications_df = notifications[
+        (notifications['teacher_username'] == username) &
+        (notifications['teacher_id'].astype(str) == str(teacher['teacher_id'])) &
+        (notifications['section'] == teacher['section'])
+    ].copy()
 
     subject_stats = []
     for subject_row in ([subject] if subject else []):
@@ -1284,3 +2574,19 @@ def teacher_class_analytics():
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

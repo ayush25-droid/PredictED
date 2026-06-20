@@ -42,12 +42,19 @@ const tabs = [
   { id: 'timetable', label: 'Timetable', icon: BookOpen },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'assignments', label: 'Assignments', icon: FileText },
+  { id: 'marks', label: 'Marks', icon: BarChart3 },
   { id: 'settings', label: 'Settings', icon: Shield }
 ]
 
 export default function TeacherDashboard() {
   const { user, logout } = useAuth()
+  const teacherSections = useMemo(() => {
+    const fromLogin = user?.sections || []
+    const fromMappings = (user?.assignments || []).map((item) => item.section).filter(Boolean)
+    return Array.from(new Set([...fromLogin, ...fromMappings]))
+  }, [user?.sections, user?.assignments])
   const [activeTab, setActiveTab] = useState('overview')
+  const [selectedSection, setSelectedSection] = useState(user?.section || teacherSections[0] || '')
   const [students, setStudents] = useState([])
   const [subjects, setSubjects] = useState([])
   const [selectedSubject, setSelectedSubject] = useState('')
@@ -61,10 +68,12 @@ export default function TeacherDashboard() {
   const [assignments, setAssignments] = useState([])
   const [teacherTimetable, setTeacherTimetable] = useState([])
   const [submissions, setSubmissions] = useState(null)
+  const [marks, setMarks] = useState([])
   const [search, setSearch] = useState('')
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [editingNotification, setEditingNotification] = useState(null)
   const [passwordForm, setPasswordForm] = useState({ current_password: '', new_password: '' })
 
   const [notificationForm, setNotificationForm] = useState({
@@ -84,8 +93,14 @@ export default function TeacherDashboard() {
   })
 
   useEffect(() => {
-    fetchPortalData()
-  }, [])
+    if (teacherSections.length > 0 && !selectedSection) {
+      setSelectedSection(teacherSections[0])
+    }
+  }, [teacherSections, selectedSection])
+
+  useEffect(() => {
+    if (selectedSection) fetchPortalData()
+  }, [selectedSection])
 
   useEffect(() => {
     if (user?.subject_id && subjects.length > 0 && !selectedSubject) {
@@ -97,7 +112,7 @@ export default function TeacherDashboard() {
   }, [user?.subject_id, subjects, selectedSubject, assignmentForm.subject])
 
   useEffect(() => {
-    if (students.length > 0 && !selectedStudent) {
+    if (students.length > 0 && (!selectedStudent || !students.some((student) => student.usn === selectedStudent))) {
       setSelectedStudent(students[0].usn)
     }
   }, [students, selectedStudent])
@@ -112,29 +127,42 @@ export default function TeacherDashboard() {
     if (selectedStudent) {
       fetchStudentDetail(selectedStudent)
     }
-  }, [selectedStudent])
+  }, [selectedStudent, selectedSection, selectedSubject])
+
+  const teacherQuery = () => {
+    const params = new URLSearchParams({
+      teacher_username: user?.username || '',
+      section: selectedSection || ''
+    })
+    const subjectCode = subjects.find((subject) => String(subject.id) === String(selectedSubject))?.code
+    if (subjectCode) params.set('subject_code', subjectCode)
+    if (selectedSubject) params.set('subject_id', selectedSubject)
+    return params
+  }
 
   const fetchPortalData = async () => {
     setLoading(true)
     try {
-      const teacherQuery = new URLSearchParams({ teacher_username: user?.username || '' })
-      const [studentsRes, subjectsRes, analyticsRes, notifRes, assignmentRes, historyRes, timetableRes] = await Promise.all([
-        fetch(`/api/students?${teacherQuery}`),
-        fetch(`/api/teacher/subjects?${teacherQuery}`),
-        fetch(`/api/teacher/class-analytics?${teacherQuery}`),
-        fetch(`/api/teacher/notifications?${teacherQuery}`),
-        fetch(`/api/teacher/assignments?${teacherQuery}`),
-        fetch(`/api/teacher/attendance/history?${teacherQuery}`),
-        fetch(`/api/teacher/timetable?${teacherQuery}`)
+      const baseQuery = new URLSearchParams({ teacher_username: user?.username || '', section: selectedSection || '' })
+      const [studentsRes, subjectsRes, analyticsRes, notifRes, assignmentRes, historyRes, timetableRes, marksRes] = await Promise.all([
+        fetch(`/api/students?${baseQuery}`),
+        fetch(`/api/teacher/subjects?${baseQuery}`),
+        fetch(`/api/teacher/class-analytics?${baseQuery}`),
+        fetch(`/api/teacher/notifications?${baseQuery}`),
+        fetch(`/api/teacher/assignments?${baseQuery}`),
+        fetch(`/api/teacher/attendance/history?${baseQuery}`),
+        fetch(`/api/teacher/timetable?${baseQuery}`),
+        fetch(`/api/teacher/marks?${baseQuery}`)
       ])
-      const [studentsData, subjectsData, analyticsData, notifData, assignmentData, historyData, timetableData] = await Promise.all([
+      const [studentsData, subjectsData, analyticsData, notifData, assignmentData, historyData, timetableData, marksData] = await Promise.all([
         studentsRes.json(),
         subjectsRes.json(),
         analyticsRes.json(),
         notifRes.json(),
         assignmentRes.json(),
         historyRes.json(),
-        timetableRes.json()
+        timetableRes.json(),
+        marksRes.json()
       ])
 
       setStudents(studentsData)
@@ -144,7 +172,9 @@ export default function TeacherDashboard() {
       setAssignments(assignmentData)
       setTeacherTimetable(timetableData)
       setHistory(historyData)
-      setSelectedSubject(String(user?.subject_id || subjectsData[0]?.id || ''))
+      setMarks(marksData)
+      setSelectedSubject(String(subjectsData[0]?.id || user?.subject_id || ''))
+      setAssignmentForm((current) => ({ ...current, subject: subjectsData[0]?.code || '' }))
     } catch (error) {
       setMessage('Unable to load teacher portal data.')
     } finally {
@@ -153,7 +183,8 @@ export default function TeacherDashboard() {
   }
 
   const loadAttendanceForDate = async () => {
-    const params = new URLSearchParams({ teacher_username: user?.username || '', subject_id: selectedSubject, date: selectedDate })
+    const params = teacherQuery()
+    params.set('date', selectedDate)
     const res = await fetch(`/api/teacher/attendance/history?${params}`)
     const records = await res.json()
     const nextAttendance = students.reduce((acc, student) => {
@@ -165,7 +196,7 @@ export default function TeacherDashboard() {
   }
 
   const fetchStudentDetail = async (usn) => {
-    const params = new URLSearchParams({ teacher_username: user?.username || '' })
+    const params = teacherQuery()
     const res = await fetch(`/api/teacher/student-attendance/${usn}?${params}`)
     setStudentDetail(await res.json())
   }
@@ -195,6 +226,7 @@ export default function TeacherDashboard() {
     try {
       const records = students.map((student) => ({
         teacher_username: user?.username,
+        section: selectedSection,
         usn: student.usn,
         subject_id: Number(selectedSubject),
         date: selectedDate,
@@ -204,7 +236,7 @@ export default function TeacherDashboard() {
       const response = await fetch('/api/teacher/attendance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teacher_username: user?.username, records })
+        body: JSON.stringify({ teacher_username: user?.username, section: selectedSection, records })
       })
       const data = await response.json()
       setMessage(data.message || 'Attendance saved.')
@@ -223,7 +255,7 @@ export default function TeacherDashboard() {
     const res = await fetch('/api/teacher/notifications', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...notificationForm, teacher_username: user?.username, sender: user?.name || 'Teacher' })
+      body: JSON.stringify({ ...notificationForm, teacher_username: user?.username, section: selectedSection, sender: user?.name || 'Teacher' })
     })
     const data = await res.json()
     setMessage(data.message)
@@ -231,6 +263,53 @@ export default function TeacherDashboard() {
       setNotificationForm({ title: '', message: '', type: 'info', recipient_type: 'class', usns: [] })
       fetchPortalData()
     }
+  }
+
+  const updateNotification = async (notice) => {
+    const params = teacherQuery()
+    const res = await fetch(`/api/teacher/notifications/${notice.id}?${params}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ teacher_username: user?.username, section: selectedSection, title: notice.title, message: notice.message, type: notice.type })
+    })
+    const data = await res.json()
+    setMessage(data.message)
+    if (data.success) {
+      setEditingNotification(null)
+      fetchPortalData()
+    }
+  }
+
+  const deleteNotification = async (notice) => {
+    const params = teacherQuery()
+    const res = await fetch(`/api/teacher/notifications/${notice.id}?${params}`, { method: 'DELETE' })
+    const data = await res.json()
+    setMessage(data.message)
+    if (data.success) fetchPortalData()
+  }
+
+  const markNotificationRead = async (notice) => {
+    const params = teacherQuery()
+    const res = await fetch(`/api/teacher/notifications/${notice.id}?${params}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ teacher_username: user?.username, section: selectedSection, read: true })
+    })
+    const data = await res.json()
+    setMessage(data.message)
+    if (data.success) fetchPortalData()
+  }
+
+  const saveMarks = async (records) => {
+    const subjectCode = subjects.find((subject) => String(subject.id) === String(selectedSubject))?.code
+    const response = await fetch('/api/teacher/marks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ teacher_username: user?.username, section: selectedSection, subject_code: subjectCode, records })
+    })
+    const data = await response.json()
+    setMessage(data.message || 'Marks saved.')
+    if (data.success) fetchPortalData()
   }
 
   const createAssignment = async (event) => {
@@ -241,6 +320,7 @@ export default function TeacherDashboard() {
       if (value) formData.append(key, value)
     })
     formData.append('teacher_username', user?.username || '')
+    formData.append('section', selectedSection || '')
 
     const res = await fetch('/api/teacher/assignments', {
       method: 'POST',
@@ -255,7 +335,7 @@ export default function TeacherDashboard() {
   }
 
   const fetchSubmissions = async (groupId) => {
-    const params = new URLSearchParams({ teacher_username: user?.username || '' })
+    const params = new URLSearchParams({ teacher_username: user?.username || '', section: selectedSection || '' })
     const res = await fetch(`/api/teacher/assignments/${groupId}/submissions?${params}`)
     setSubmissions(await res.json())
   }
@@ -346,9 +426,26 @@ export default function TeacherDashboard() {
       </aside>
 
       <main className="flex-1 overflow-auto p-8">
-        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-          <h1 className="text-2xl font-bold text-text-primary">Teacher Dashboard</h1>
-          <p className="text-text-secondary mt-1">Manage attendance, notifications, assignments, and class analytics</p>
+        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-text-primary">Teacher Dashboard</h1>
+            <p className="text-text-secondary mt-1">Manage attendance, notifications, assignments, and class analytics</p>
+          </div>
+          <div className="flex flex-col gap-2 min-w-56">
+            <label className="text-xs text-text-tertiary">Section</label>
+            <select
+              value={selectedSection}
+              onChange={(event) => {
+                setSelectedSection(event.target.value)
+                setSelectedStudent('')
+                setAttendance({})
+                setSubmissions(null)
+              }}
+              className="bg-bg-tertiary border border-border rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:border-accent-primary transition-colors"
+            >
+              {teacherSections.map((section) => <option key={section} value={section}>{section}</option>)}
+            </select>
+          </div>
           {message && <p className="mt-4 text-sm text-accent-primary">{message}</p>}
         </motion.div>
 
@@ -400,6 +497,11 @@ export default function TeacherDashboard() {
                 toggleRecipient={toggleRecipient}
                 sendNotification={sendNotification}
                 notifications={notifications}
+                editingNotification={editingNotification}
+                setEditingNotification={setEditingNotification}
+                updateNotification={updateNotification}
+                deleteNotification={deleteNotification}
+                markNotificationRead={markNotificationRead}
               />
             )}
 
@@ -416,6 +518,15 @@ export default function TeacherDashboard() {
                 assignments={assignments}
                 submissions={submissions}
                 fetchSubmissions={fetchSubmissions}
+              />
+            )}
+
+            {activeTab === 'marks' && (
+              <TeacherMarksSection
+                marks={marks}
+                students={students}
+                selectedSubjectName={selectedSubjectName}
+                saveMarks={saveMarks}
               />
             )}
 
@@ -670,7 +781,89 @@ function StudentAttendanceSection({ students, selectedStudent, setSelectedStuden
   )
 }
 
-function NotificationsSection({ students, form, setForm, toggleRecipient, sendNotification, notifications }) {
+function TeacherMarksSection({ marks, students, selectedSubjectName, saveMarks }) {
+  const [rows, setRows] = useState([])
+  const [query, setQuery] = useState('')
+
+  useEffect(() => {
+    const byUsn = new Map((marks || []).map((row) => [row.student_id, row]))
+    setRows(students.map((student) => byUsn.get(student.usn) || {
+      student_id: student.usn,
+      student_name: student.name,
+      CIE1: '',
+      CIE2: '',
+      CIE3: '',
+      SEE: ''
+    }))
+  }, [marks, students])
+
+  const update = (studentId, field, value) => {
+    setRows((current) => current.map((row) => row.student_id === studentId ? { ...row, [field]: value } : row))
+  }
+  const average = (row) => {
+    const values = ['CIE1', 'CIE2', 'CIE3', 'SEE'].map((field) => Number(row[field])).filter((value) => !Number.isNaN(value))
+    return values.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : 0
+  }
+  const visibleRows = rows.filter((row) => `${row.student_id} ${row.student_name}`.toLowerCase().includes(query.trim().toLowerCase()))
+  const ranked = [...rows].sort((a, b) => average(b) - average(a))
+  const allScores = rows.flatMap((row) => ['CIE1', 'CIE2', 'CIE3', 'SEE'].map((field) => Number(row[field])).filter((value) => !Number.isNaN(value)))
+  const classAverage = allScores.length ? Math.round(allScores.reduce((sum, value) => sum + value, 0) / allScores.length) : 0
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <StatCard icon={Users} label="Students" value={rows.length} color="bg-accent-primary/20 text-accent-primary" />
+        <StatCard icon={BarChart3} label="Average" value={classAverage} color="bg-success/20 text-success" />
+        <StatCard icon={CheckCircle} label="Highest" value={average(ranked[0] || {})} color="bg-warning/20 text-warning" />
+        <StatCard icon={XCircle} label="Lowest" value={average(ranked[ranked.length - 1] || {})} color="bg-danger/20 text-danger" />
+      </div>
+
+      <section className="glass-card rounded-2xl p-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-text-primary">Marks Dashboard</h3>
+            <p className="text-sm text-text-secondary">{selectedSubjectName}</p>
+          </div>
+          <div className="flex gap-3">
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search students" className="bg-bg-tertiary border border-border rounded-xl py-3 px-4 text-text-primary placeholder:text-text-tertiary" />
+            <button type="button" onClick={() => saveMarks(rows)} className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-accent-primary to-accent-secondary text-white font-semibold">
+              <Save className="w-5 h-5" />Save Marks
+            </button>
+          </div>
+        </div>
+        <div className="space-y-2 max-h-[560px] overflow-auto">
+          {visibleRows.map((row) => (
+            <div key={row.student_id} className="grid grid-cols-1 lg:grid-cols-[1.5fr_repeat(5,110px)] gap-3 p-3 bg-bg-tertiary rounded-xl items-center">
+              <div>
+                <p className="text-sm font-medium text-text-primary">{row.student_name}</p>
+                <p className="text-xs text-text-tertiary">{row.student_id}</p>
+              </div>
+              {['CIE1', 'CIE2', 'CIE3', 'SEE'].map((field) => (
+                <input key={field} value={row[field] || ''} onChange={(event) => update(row.student_id, field, event.target.value)} placeholder={field} className="bg-bg-secondary border border-border rounded-xl py-2 px-3 text-text-primary placeholder:text-text-tertiary" />
+              ))}
+              <span className="text-sm text-accent-primary">{average(row)}%</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="glass-card rounded-2xl p-6">
+        <h3 className="text-lg font-semibold text-text-primary mb-4">Marks Distribution</h3>
+        <ResponsiveContainer width="100%" height={260}>
+          <BarChart data={rows.map((row) => ({ name: row.student_name, average: average(row) }))}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e1e2e" />
+            <XAxis dataKey="name" stroke="#64748b" fontSize={10} hide />
+            <YAxis stroke="#64748b" fontSize={12} domain={[0, 100]} />
+            <Tooltip contentStyle={{ backgroundColor: '#12121a', border: '1px solid #1e1e2e', borderRadius: '8px' }} />
+            <Bar dataKey="average" fill="#6366f1" radius={[4, 4, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </section>
+    </div>
+  )
+}
+
+function NotificationsSection({ students, form, setForm, toggleRecipient, sendNotification, notifications, editingNotification, setEditingNotification, updateNotification, deleteNotification, markNotificationRead }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <form onSubmit={sendNotification} className="glass-card rounded-2xl p-6 space-y-4">
@@ -707,11 +900,34 @@ function NotificationsSection({ students, form, setForm, toggleRecipient, sendNo
         <h3 className="text-lg font-semibold text-text-primary mb-4">Sent Notifications</h3>
         <div className="space-y-3 max-h-[520px] overflow-auto">
           {notifications.map((item) => (
+            editingNotification?.id === item.id ? (
+              <div key={`${item.id}-${item.usn}`} className="p-3 bg-bg-tertiary rounded-xl space-y-2">
+                <input value={editingNotification.title} onChange={(event) => setEditingNotification({ ...editingNotification, title: event.target.value })} className="w-full bg-bg-secondary border border-border rounded-xl py-2 px-3 text-text-primary" />
+                <textarea value={editingNotification.message} onChange={(event) => setEditingNotification({ ...editingNotification, message: event.target.value })} className="w-full bg-bg-secondary border border-border rounded-xl py-2 px-3 text-text-primary" />
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => updateNotification(editingNotification)} className="px-3 py-2 rounded-lg bg-accent-primary text-white text-sm">Save</button>
+                  <button type="button" onClick={() => setEditingNotification(null)} className="px-3 py-2 rounded-lg bg-bg-secondary text-text-secondary text-sm">Cancel</button>
+                </div>
+              </div>
+            ) : (
             <div key={`${item.id}-${item.usn}`} className="p-3 bg-bg-tertiary rounded-xl">
+              {item.teacher_username ? (
+                <div className="flex justify-end gap-2 mb-2">
+                  <button type="button" onClick={() => setEditingNotification(item)} className="text-accent-primary text-xs">Edit</button>
+                  <button type="button" onClick={() => deleteNotification(item)} className="text-danger text-xs">Delete</button>
+                </div>
+              ) : (
+                <div className="flex justify-end mb-2">
+                  <button type="button" onClick={() => markNotificationRead(item)} className="text-accent-primary text-xs">
+                    {String(item.read).toLowerCase() === 'true' ? 'Read' : 'Mark read'}
+                  </button>
+                </div>
+              )}
               <p className="text-sm font-medium text-text-primary">{item.title}</p>
               <p className="text-xs text-text-tertiary mt-1">{item.message}</p>
               <p className="text-xs text-text-secondary mt-2">{item.usn} · {item.date}</p>
             </div>
+            )
           ))}
         </div>
       </div>

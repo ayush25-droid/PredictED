@@ -1,25 +1,8 @@
-﻿teacher_id,username,password,name,subject,subject_code,section
-T001,sandra_a,sandra123,Sandra Jestine,Multivariate Calculus and Numerical Methods,MCNM,AI-A
-T002,vidya_a,vidya123,Dr. Vidya G,Smart Materials for Emerging Technology,SM for ET,AI-A
-T003,ensteih_a,ensteih123,Prof. Ensteih Silvia,Introduction to AI and Applications,AI,AI-A
-T004,priyanshu_a,priyanshu123,Dr. Priyanshu Kumar,Introduction to Electrical Engineering,EEE,AI-A
-T005,jayashri_a,jay123,Prof. Jayashri G M,Python Programming,PYTHON,AI-A
-T006,kalpana_a,kalpana123,Dr. Kalpana S Singh,Communication Skills,COMMUNICATION SKILL,AI-A
-T007,anusuya_a,anusuya123,Prof. K. P. Anusuya,Indian Constitution and Engineering Ethics,ICE,AI-A
-T008,ipbl_a,ipbl123,Prof. Ensteih Silvia,Interdisciplinary Project-Based Learning,IPBL,AI-A
-T009,sandra,sandra123,Sandra Jestine,Multivariate Calculus and Numerical Methods,MCNM,AI-B
-T010,vidya,vidya123,Dr. Vidya G,Smart Materials for Emerging Technology,SM for ET,AI-B
-T011,ensteih,ensteih123,Prof. Ensteih Silvia,Introduction to AI and Applications,AI,AI-B
-T012,priyanshu,priyanshu123,Dr. Priyanshu Kumar,Introduction to Electrical Engineering,EEE,AI-B
-T013,jayashri,jay123,Prof. Jayashri G M,Python Programming,PYTHON,AI-B
-T014,kalpana,kalpana123,Dr. Kalpana S Singh,Communication Skills,COMMUNICATION SKILL,AI-B
-T015,anusuya,anusuya123,Prof. K. P. Anusuya,Indian Constitution and Engineering Ethics,ICE,AI-B
-T016,ipbl,ipbl123,Prof. Ensteih Silvia,Interdisciplinary Project-Based Learning,IPBL,AI-B
-T017,sandra_cd,sandra123,Sandra Jestine,Multivariate Calculus and Numerical Methods,MCNM,CD
-T018,vidya_cd,vidya123,Dr. Vidya G,Smart Materials for Emerging Technology,SM for ET,CD
-T019,ensteih_cd,ensteih123,Prof. Ensteih Silvia,Introduction to AI and Applications,AI,CD
-T020,priyanshu_cd,priyanshu123,Dr. Priyanshu Kumar,Introduction to Electrical Engineering,EEE,CD
-T021,jayashri_cd,jay123,Prof. Jayashri G M,Python Programming,PYTHON,CD
-T022,kalpana_cd,kalpana123,Dr. Kalpana S Singh,Communication Skills,COMMUNICATION SKILL,CD
-T023,anusuya_cd,anusuya123,Prof. K. P. Anusuya,Indian Constitution and Engineering Ethics,ICE,CD
-T024,ipbl_cd,ipbl123,Prof. Ensteih Silvia,Interdisciplinary Project-Based Learning,IPBL,CD
+"teacher_id","username","password","name","email"
+"T001","sandra","sandra123","Sandra Jestine","linkedlist35@gmail.com"
+"T002","vidya","vidya123","Dr. Vidya G","vidya@predicted.local"
+"T003","ensteih","ensteih123","Prof. Ensteih Silvia","ensteih@predicted.local"
+"T004","priyanshu","priyanshu123","Dr. Priyanshu Kumar","priyanshu@predicted.local"
+"T005","jayashri","jay123","Prof. Jayashri G M","jayashri@predicted.local"
+"T006","kalpana","kalpana123","Dr. Kalpana S Singh","kalpana@predicted.local"
+"T007","anusuya","anusuya123","Prof. K. P. Anusuya","anusuya@predicted.local"

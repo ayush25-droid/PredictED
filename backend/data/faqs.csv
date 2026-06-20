@@ -1,0 +1,7 @@
+question,answer,tags
+What is PredictED?,PredictED is an academic ERP for attendance assignments timetable marks notifications and analytics.,general
+What attendance percentage is safe?,Students should usually maintain at least 75 percent attendance.,attendance
+What does No Attendance mean?,No Attendance means the class is not counted as Present or Absent for attendance percentage.,attendance
+How do I reset my password?,Use Forgot Password on the Student or Teacher login page and enter your registered email.,password
+Who can update marks?,Teachers can update marks for their assigned subject and section. Admin can view and edit marks when necessary.,marks
+Who can mark attendance?,Teachers can mark attendance for their assigned subject and selected section.,attendance
